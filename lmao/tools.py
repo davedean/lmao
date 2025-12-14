@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import json
-import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,31 +9,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .debug_log import DebugLogger
 from .plugins import PluginTool
-from .skills import list_skill_info, validate_skill_write_target
 from .task_list import TaskListManager
 
-BUILTIN_TOOLS = {
-    "read",
-    "write",
-    "grep",
-    "find",
-    "ls",
-    "mkdir",
-    "move",
-    "list_skills",
-    "add_task",
-    "complete_task",
-    "delete_task",
-    "list_tasks",
-}
-
-READ_ONLY_DISABLED_TOOLS = {
-    "write",
-    "mkdir",
-    "move",
-}
-
-TOOL_ORDER = [
+BUILTIN_TOOLS: set[str] = {
     "read",
     "write",
     "mkdir",
@@ -47,7 +24,12 @@ TOOL_ORDER = [
     "complete_task",
     "delete_task",
     "list_tasks",
-]
+    "git_add",
+    "git_commit",
+    "bash",
+}
+READ_ONLY_DISABLED_TOOLS: set[str] = set()
+TOOL_ORDER: list[str] = []
 
 def json_success(tool: str, data: Any, note: Optional[str] = None) -> str:
     payload: Dict[str, Any] = {"tool": tool, "success": True, "data": data}
@@ -297,221 +279,6 @@ def run_tool(
             if debug_logger:
                 debug_logger.log("plugin.error", f"tool={tool} path={plugin.path} error={exc}")
             return json_error(tool, f"plugin '{tool}' failed: {exc}")
-
-    if tool == "read":
-        if not target_path.exists():
-            return json_error(tool, f"file '{target}' not found")
-        try:
-            content = target_path.read_text(encoding="utf-8")
-        except Exception as exc:
-            return json_error(tool, f"unable to read '{target}': {exc}")
-        line_range = parse_line_range(str(args))
-        truncated = False
-        if line_range:
-            start, end = line_range
-            lines = content.splitlines()
-            selected = lines[start - 1 : end]
-            content = "\n".join(selected)
-            range_info = {"start": start, "end": end}
-        else:
-            range_info = None
-        if len(content) > 200_000:
-            content = content[:200_000]
-            truncated = True
-        data: Dict[str, Any] = {
-            "path": normalize_path_for_output(target_path, base),
-            "content": content,
-        }
-        if range_info:
-            data["lines"] = range_info
-        if truncated:
-            data["truncated"] = True
-        return json_success(tool, data)
-
-    if tool == "write":
-        try:
-            target_path.parent.mkdir(parents=True, exist_ok=True)
-            if target_path.exists() and target_path.is_dir():
-                return json_error(tool, f"'{target}' is a directory; use mkdir instead")
-            if str(target).rstrip().endswith(("/", "\\")):
-                return json_error(tool, f"'{target}' looks like a directory path; use mkdir instead")
-            skill_error = validate_skill_write_target(target_path, skill_roots)
-            if skill_error:
-                return json_error(tool, skill_error)
-            with target_path.open("w", encoding="utf-8") as fh:
-                fh.write(args or "")
-            data = {
-                "path": normalize_path_for_output(target_path, base),
-                "bytes": len(args or ""),
-            }
-            return json_success(tool, data)
-        except Exception as exc:
-            return json_error(tool, f"unable to write '{target}': {exc}")
-
-    if tool == "mkdir":
-        try:
-            target_path.mkdir(parents=True, exist_ok=True)
-            data = {"path": normalize_path_for_output(target_path, base), "created": True}
-            return json_success(tool, data)
-        except Exception as exc:
-            return json_error(tool, f"unable to create directory '{target}': {exc}")
-
-    if tool == "move":
-        try:
-            dest_path = safe_target_path(str(args), base, extra_roots)
-        except Exception:
-            return json_error(tool, f"destination path '{args}' escapes working directory")
-        try:
-            if not target_path.exists():
-                return json_error(tool, f"source '{target}' not found")
-            if dest_path.exists():
-                return json_error(tool, f"destination '{args}' already exists")
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            target_path.replace(dest_path)
-            data = {
-                "from": normalize_path_for_output(target_path, base),
-                "to": normalize_path_for_output(dest_path, base),
-            }
-            return json_success(tool, data)
-        except Exception as exc:
-            return json_error(tool, f"unable to move '{target}' to '{args}': {exc}")
-
-    if tool == "ls":
-        if not target_path.exists():
-            return json_error(tool, f"path '{target}' not found")
-        try:
-            if target_path.is_file():
-                entries = [{
-                    "name": target_path.name,
-                    "path": normalize_path_for_output(target_path, base),
-                    "type": "file",
-                }]
-                data = {"path": normalize_path_for_output(target_path, base), "entries": entries}
-                return json_success(tool, data)
-            entries_list = []
-            for p in sorted(target_path.iterdir(), key=lambda x: x.name):
-                entries_list.append({
-                    "name": p.name,
-                    "path": normalize_path_for_output(p, base),
-                    "type": "dir" if p.is_dir() else "file",
-                })
-            data = {"path": normalize_path_for_output(target_path, base), "entries": entries_list}
-            return json_success(tool, data)
-        except Exception as exc:
-            return json_error(tool, f"unable to list '{target}': {exc}")
-
-    if tool == "find":
-        if not target_path.exists():
-            return json_error(tool, f"path '{target}' not found")
-        results: List[Dict[str, str]] = []
-        truncated = False
-        try:
-            for root, dirs, files in os.walk(target_path):
-                dirs[:] = [d for d in dirs if not d.startswith(".")]
-                visible_files = [f for f in files if not f.startswith(".")]
-                for name in sorted(visible_files + dirs):
-                    path = Path(root) / name
-                    rel_display = normalize_path_for_output(path, base)
-                    results.append({
-                        "name": name,
-                        "path": rel_display,
-                        "type": "dir" if path.is_dir() else "file",
-                    })
-                    if len(results) >= 200:
-                        truncated = True
-                        break
-                if truncated:
-                    break
-            data: Dict[str, Any] = {
-                "path": normalize_path_for_output(target_path, base),
-                "results": results,
-            }
-            if truncated:
-                data["truncated"] = True
-            return json_success(tool, data)
-        except Exception as exc:
-            return json_error(tool, f"unable to walk '{target}': {exc}")
-
-    if tool == "grep":
-        pattern = str(args)
-        if target_path.is_dir():
-            candidates = [p for p in target_path.rglob("*") if p.is_file()]
-        else:
-            candidates = [target_path]
-        matches: List[Dict[str, Any]] = []
-        truncated = False
-        for candidate in candidates:
-            try:
-                content = candidate.read_text(encoding="utf-8")
-            except Exception:
-                continue
-            for lineno, line in enumerate(content.splitlines(), start=1):
-                if pattern in line:
-                    matches.append({
-                        "path": normalize_path_for_output(candidate, base),
-                        "line": lineno,
-                        "text": line,
-                    })
-                if len(matches) >= 200:
-                    truncated = True
-                    break
-            if truncated:
-                break
-        data: Dict[str, Any] = {
-            "path": normalize_path_for_output(target_path, base),
-            "pattern": pattern,
-            "matches": matches,
-        }
-        if truncated:
-            data["truncated"] = True
-        return json_success(tool, data)
-
-    if tool in {"add_task", "complete_task", "delete_task", "list_tasks"}:
-        if task_manager is None:
-            return json_error(tool, "task list manager unavailable")
-        payload = args if args is not None else ""
-        if isinstance(payload, str):
-            payload = payload.strip()
-        if (not payload) and target:
-            payload = str(target).strip()
-        if tool == "add_task":
-            text = normalize_task_text(str(payload).strip())
-            if not text:
-                return json_error(tool, "task text is required")
-            task = task_manager.add_task(text)
-            data = {
-                "task": {"id": task.id, "text": task.text, "done": task.done},
-                "tasks": task_manager.to_payload(),
-            }
-            return json_success(tool, data)
-        if tool == "complete_task":
-            try:
-                task_id = int(str(payload).strip())
-            except Exception:
-                return json_error(tool, "task id must be an integer")
-            message = task_manager.complete_task(task_id)
-            if message.startswith("error:"):
-                return json_error(tool, message)
-            data = {"message": message, "tasks": task_manager.to_payload()}
-            return json_success(tool, data)
-        if tool == "delete_task":
-            try:
-                task_id = int(str(payload).strip())
-            except Exception:
-                return json_error(tool, "task id must be an integer")
-            message = task_manager.delete_task(task_id)
-            if message.startswith("error:"):
-                return json_error(tool, message)
-            data = {"message": message, "tasks": task_manager.to_payload()}
-            return json_success(tool, data)
-        if tool == "list_tasks":
-            data = {"tasks": task_manager.to_payload(), "render": task_manager.render_tasks()}
-            return json_success(tool, data)
-
-    if tool == "list_skills":
-        skills = list_skill_info(skill_roots)
-        data = [{"name": name, "path": str(path)} for name, path in skills]
-        return json_success(tool, data)
 
     return json_error(tool, "unexpected tool handling branch")
 

@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 from unittest import TestCase
 
+from lmao.plugins import discover_plugins
 from lmao.tools import ToolCall, parse_tool_calls, run_tool, safe_target_path
 from lmao.task_list import TaskListManager
 
@@ -40,6 +41,8 @@ class ToolSafetyTests(TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.base = Path(self.tmp.name).resolve()
+        tools_dir = Path(__file__).resolve().parent.parent / "lmao" / "tools"
+        self.plugins = discover_plugins([tools_dir], self.base, allow_outside_base=True)
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -52,7 +55,7 @@ class ToolSafetyTests(TestCase):
         target = self.base / "notes.txt"
         target.write_text("a\nb\nc\nd\n", encoding="utf-8")
         call = ToolCall(tool="read", target="notes.txt", args="lines:2-3")
-        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False)
+        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins)
         payload = json.loads(output)
         self.assertTrue(payload["success"])
         self.assertEqual({"start": 2, "end": 3}, payload["data"]["lines"])
@@ -62,7 +65,7 @@ class ToolSafetyTests(TestCase):
         skills_root = self.base / "skills"
         skills_root.mkdir()
         call = ToolCall(tool="write", target="skills/loose.md", args="demo")
-        result = run_tool(call, base=self.base, extra_roots=[], skill_roots=[skills_root], yolo_enabled=False)
+        result = run_tool(call, base=self.base, extra_roots=[], skill_roots=[skills_root], yolo_enabled=False, plugin_tools=self.plugins)
         payload = json.loads(result)
         self.assertFalse(payload["success"])
         self.assertIn("skills/<skill-name>", payload["error"])
@@ -84,6 +87,7 @@ class ToolSafetyTests(TestCase):
             extra_roots=[user_root],
             skill_roots=[self.base / "skills", user_root],
             yolo_enabled=False,
+            plugin_tools=self.plugins,
         )
         payload = json.loads(output)
         self.assertTrue(payload["success"])
@@ -97,21 +101,21 @@ class ToolSafetyTests(TestCase):
         complete = ToolCall(tool="complete_task", target="", args="1")
         list_call = ToolCall(tool="list_tasks", target="", args="")
 
-        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, task_manager=manager)
+        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         add_payload = json.loads(add_out)
         self.assertTrue(add_payload["success"])
 
-        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, task_manager=manager)
+        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         list_payload = json.loads(list_out)
         self.assertTrue(list_payload["success"])
         self.assertIn("[ ] 1 create a plan to respond", list_payload["data"]["render"])
         self.assertIn("[ ] 2 do something", list_payload["data"]["render"])
 
-        complete_out = run_tool(complete, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, task_manager=manager)
+        complete_out = run_tool(complete, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         complete_payload = json.loads(complete_out)
         self.assertTrue(complete_payload["success"])
 
-        list_out_done = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, task_manager=manager)
+        list_out_done = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         list_payload_done = json.loads(list_out_done)
         self.assertTrue(list_payload_done["success"])
         self.assertIn("[x] 1 create a plan to respond", list_payload_done["data"]["render"])
@@ -120,10 +124,10 @@ class ToolSafetyTests(TestCase):
         manager = TaskListManager()
         add = ToolCall(tool="add_task", target="task via target", args="")
         list_call = ToolCall(tool="list_tasks", target="", args="")
-        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, task_manager=manager)
+        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         add_payload = json.loads(add_out)
         self.assertTrue(add_payload["success"])
-        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, task_manager=manager)
+        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         list_payload = json.loads(list_out)
         self.assertIn("task via target", list_payload["data"]["render"])
 
@@ -132,7 +136,7 @@ class ToolSafetyTests(TestCase):
         spaced_dir.mkdir()
         (spaced_dir / "file name.txt").write_text("hi", encoding="utf-8")
         call = ToolCall(tool="find", target=".", args="")
-        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False)
+        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins)
         payload = json.loads(output)
         paths = {entry["path"] for entry in payload["data"]["results"]}
         self.assertIn("my folder/", paths)
@@ -141,18 +145,18 @@ class ToolSafetyTests(TestCase):
     def test_add_task_strips_numbering_and_newlines(self) -> None:
         manager = TaskListManager()
         add = ToolCall(tool="add_task", target="", args="1. do something\nmultiline")
-        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, task_manager=manager)
+        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         add_payload = json.loads(add_out)
         self.assertTrue(add_payload["success"])
         list_call = ToolCall(tool="list_tasks", target="", args="")
-        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, task_manager=manager)
+        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         list_payload = json.loads(list_out)
         self.assertIn("[ ] 2 do something multiline", list_payload["data"]["render"])
 
     def test_read_only_blocks_destructive_tools(self) -> None:
         target = self.base / "notes.txt"
         call = ToolCall(tool="write", target=str(target), args="content")
-        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, read_only=True)
+        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, read_only=True, plugin_tools=self.plugins)
         payload = json.loads(output)
         self.assertFalse(payload["success"])
         self.assertIn("read-only", payload["error"])

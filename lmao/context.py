@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 from .plugins import PluginTool
 
 SKILL_GUIDE = """Skills live under ./skills. Each Skill must be in its own folder: ./skills/<skill-name>
@@ -30,7 +30,7 @@ Constraints:
 # this fallback remains empty to avoid drifting from runtime discovery.
 DEFAULT_ALLOWED_TOOLS: list[str] = []
 
-GENERAL_INTRO_PROMPT = """You are running inside an agentic loop with tools. Act autonomously: plan, use tools, and keep going until the user's request is done.
+GENERAL_INTRO_PROMPT = """You are running inside an agentic loop with tools. Act autonomously: plan, use tools, and keep going until the user's request is done. Tools are operational commands; skills are separate playbooks—do not treat skills as tools. If the user asks about tools, answer directly without calling any tool. Calling list_skills without an explicit user request for skills is a mistake.
 
 Task list: manage it with the task tools (seed with "create a plan to respond"). Keep items concise and up to date before replying; if tasks remain and you're not blocked, keep working instead of replying.
 
@@ -42,8 +42,10 @@ General Q&A should be answered directly without calling tools unless needed.
   """
 
 SKILL_USAGE_PROMPT = """Skills live under ./skills/<name>/SKILL.md and may also exist under ~/.config/agents/skills/<name>/SKILL.md.
-- When asked to use a skill, call list_skills if you need the paths, then read that SKILL.md and follow its instructions/examples exactly; do not guess.
-- Do not enumerate or read skills unless the user asks about skills or requests one.
+- Skills are not tools. Only talk about skills when the user asks about skills or requests one.
+- list_skills must only be called if the user explicitly asks to list skills or requests a skill and you lack the path. Do NOT call list_skills to answer tool questions.
+- When asked to use a skill, consult the prelisted skills below for paths; if you still need paths, call list_skills, then read that SKILL.md and follow its instructions/examples exactly—do not guess.
+- Do not enumerate or read skills unless the user asks about skills or requests one; use the prelisted skills below and refresh with list_skills only if paths change or the user explicitly asks for a fresh list.
 - If you cannot apply the skill after reading, ask one concise clarifying question."""
 
 
@@ -54,18 +56,23 @@ def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_onl
     if plugins:
         plugin_map = {plugin.name: plugin for plugin in plugins}
         for name in resolved:
+            if name == "list_skills":
+                continue  # avoid prompting the model to call this unless explicitly asked
             plugin = plugin_map.get(name)
             if plugin and plugin.usage_examples:
                 example_lines.extend(plugin.usage_examples)
     examples_block = "\n".join(example_lines) if example_lines else "(no tool examples provided by plugins)"
 
-    prompt = (
-        f"Available tools (including plugins): {tool_list}.\n"
-        "Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces).\n"
-        "When you need to use a tool, respond ONLY with a single JSON object (no surrounding text) shaped like:\n"
-        f"{examples_block}\n"
-        "Paths are relative to the working directory; do not escape with .. or absolute paths. Quote paths with spaces. Issue one tool call at a time; only the first JSON block will run. Do not stay silent or return empty replies. If asked about available tools, answer from the list above without running tools."
-    )
+    prompt_lines = [
+        f"Available tools (including plugins): {tool_list}.",
+        "Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces).",
+        "When you need to use a tool, respond ONLY with a single JSON object (no surrounding text) shaped like:",
+        f"{examples_block}",
+        "Paths are relative to the working directory; do not escape with .. or absolute paths. Quote paths with spaces. Issue one tool call at a time; only the first JSON block will run. Do not stay silent or return empty replies.",
+        "If asked about available tools, answer directly from the list above without running any tool. Skills are already listed below—do not call list_skills unless the user asks about skills or you suspect the list changed and the user wants an update.",
+        "Calling list_skills to answer tool questions is forbidden; reply directly instead.",
+    ]
+    prompt = "\n".join(prompt_lines)
 
     if read_only:
         prompt = (
@@ -83,6 +90,7 @@ class NotesContext:
     repo_notes: str
     user_notes: str
     user_skills: Optional[Path]
+    discovered_skills: List[Tuple[str, Path]]
 
 
 def find_repo_root(start: Path) -> Path:
@@ -122,9 +130,29 @@ def load_user_notes_and_skills() -> tuple[str, Optional[Path]]:
     return notes, None
 
 
+def _list_available_skills(skill_roots: Sequence[Path]) -> List[Tuple[str, Path]]:
+    seen = set()
+    found: List[Tuple[str, Path]] = []
+    for root in skill_roots:
+        if not root.exists() or not root.is_dir():
+            continue
+        for candidate in root.iterdir():
+            if not candidate.is_dir():
+                continue
+            if (candidate / "SKILL.md").exists():
+                key = (candidate.name, str(candidate.resolve()))
+                if key in seen:
+                    continue
+                seen.add(key)
+                found.append((candidate.name, candidate))
+    found.sort(key=lambda pair: pair[0])
+    return found
+
+
 def gather_context(workdir: Path) -> NotesContext:
     repo_root = find_repo_root(workdir)
     nearest_agents = find_nearest_agents(workdir, repo_root)
+    skill_roots = [workdir / "skills"]
 
     repo_notes = ""
     if nearest_agents:
@@ -134,12 +162,15 @@ def gather_context(workdir: Path) -> NotesContext:
             repo_notes = ""
 
     user_notes, user_skills = load_user_notes_and_skills()
+    if user_skills:
+        skill_roots.append(user_skills)
     return NotesContext(
         repo_root=repo_root,
         nearest_agents=nearest_agents,
         repo_notes=repo_notes.strip(),
         user_notes=user_notes.strip(),
         user_skills=user_skills,
+        discovered_skills=_list_available_skills(skill_roots),
     )
 
 
@@ -148,6 +179,7 @@ def build_system_message(workdir: Path, yolo_enabled: bool, notes: NotesContext,
     tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{build_tool_prompt(resolved_allowed, yolo_enabled, read_only, plugins=plugins)}"
     content = (
         f"{tool_prompt}\n\n{SKILL_USAGE_PROMPT}\n"
+        "Reminder: do NOT call any tool just to answer \"what tools are available\"—respond directly. Skills are listed below; do not refresh them unless the user asks.\n"
         f"Working directory: {workdir}\n"
         f"All tool paths are relative to this directory.\n"
         f"AGENTS discovery: starting from the task path ({workdir}), walk up to the repo root ({notes.repo_root}) and use the nearest AGENTS.md found. "
@@ -156,6 +188,11 @@ def build_system_message(workdir: Path, yolo_enabled: bool, notes: NotesContext,
         f"Read-only mode: {'enabled (destructive tools disabled)' if read_only else 'disabled'}.\n\n"
         f"Skill structure:\n{SKILL_GUIDE}"
     )
+    if notes.discovered_skills:
+        skills_lines = "\n".join(f"- {name} (path: {path})" for name, path in notes.discovered_skills)
+        content = f"{content}\n\nSkills discovered at start (no tool call):\n{skills_lines}\nUse this list unless the user asks for an updated list."
+    else:
+        content = f"{content}\n\nSkills discovered at start: none found."
 
     if initial_task_list:
         content = f"{content}\n\nInitial task list:\n{initial_task_list}\nUpdate it before starting work."

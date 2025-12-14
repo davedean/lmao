@@ -44,6 +44,7 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 - Safety: `--mode yolo` (opt into risky flows/plugins) or `--mode readonly` (disable writes/moves/git/bash and plugins that opt out of read-only); legacy `--yolo`/`--read-only` remain for compatibility
 - Extensibility: user-specified plugin directories are planned but not yet supported; current runs load the shipped plugins from `lmao/tools/` (inside the installed package).
 - Loop control: `--max-turns`, `--silent-tools`, `--max-tool-lines`, `--max-tool-chars`
+- Output: `--no-stats` (hide token/latency/bytes stats in the prompt/output)
 - Prompting: `--prompt-file` (seed long prompts), optional interactive prompt when the positional prompt is omitted
 - Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory
 

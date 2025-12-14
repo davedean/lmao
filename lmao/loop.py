@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
-from .llm import LLMClient
+from .llm import LLMCallStats, LLMClient
 from .task_list import TaskListManager
 from .tools import ToolCall, get_allowed_tools, parse_tool_calls, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
@@ -32,17 +32,35 @@ def run_agent_turn(
     allowed_tools: Sequence[str],
     plugin_tools: Dict[str, PluginTool],
     task_manager: TaskListManager,
+    show_stats: bool,
     debug_logger: Optional[DebugLogger] = None,
-) -> None:
+) -> Tuple[int, Optional[LLMCallStats]]:
     """Run one model turn, executing tools until the model stops requesting them."""
     empty_replies = 0
     last_tool_summary: Optional[str] = None
+    last_stats: Optional[LLMCallStats] = None
+    current_turn = turn
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
 
     while True:
-        assistant_reply = client.call(messages)
+        result = client.call(messages)
+        assistant_reply = result.content
+        last_stats = result.stats
+
+        if show_stats:
+            estimate_mark = "~" if last_stats.is_estimate else ""
+            stats_line = (
+                f"[stats] in={estimate_mark}{last_stats.prompt_tokens} "
+                f"out={estimate_mark}{last_stats.completion_tokens} "
+                f"total={estimate_mark}{last_stats.total_tokens} "
+                f"time={last_stats.elapsed_s:.2f}s "
+                f"bytes={last_stats.request_bytes}/{last_stats.response_bytes} "
+                f"msgs={len(messages)}"
+            )
+            print(f"{COLOR_DIM}{stats_line}{COLOR_RESET}")
+
         if not assistant_reply or not assistant_reply.strip():
             empty_replies += 1
             if empty_replies >= 2:
@@ -51,14 +69,14 @@ def run_agent_turn(
                     f"(auto-generated fallback) Unable to get a response from the model. "
                     f"Based on the latest tool output, here is a summary:\n{fallback}"
                 )
-                print(f"\n{COLOR_BLUE}[assistant #{turn}]{COLOR_RESET}\n{assistant_reply}\n")
+                print(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{assistant_reply}\n")
                 messages.append({"role": "assistant", "content": assistant_reply})
-                return
+                return current_turn + 1, last_stats
             messages.append({"role": "system", "content": f"Your last reply was empty. The user asked: {last_user!r}. Continue the conversation now using the latest tool results and reply to the user."})
             continue
 
         if debug_logger:
-            debug_logger.log("assistant.reply", f"turn={turn} content={assistant_reply}")
+            debug_logger.log("assistant.reply", f"turn={current_turn} content={assistant_reply}")
         empty_replies = 0
         tool_calls = parse_tool_calls(assistant_reply, allowed_tools=allowed_tools)
         tool_call = tool_calls[0] if tool_calls else None
@@ -68,16 +86,16 @@ def run_agent_turn(
         body_color_start = COLOR_DIM if is_tool_phase else ""
         body_color_end = COLOR_RESET if is_tool_phase else ""
 
-        print(f"\n{label_color}[assistant #{turn}]{COLOR_RESET}\n{body_color_start}{reply_body}{body_color_end}\n")
+        print(f"\n{label_color}[assistant #{current_turn}]{COLOR_RESET}\n{body_color_start}{reply_body}{body_color_end}\n")
         messages.append({"role": "assistant", "content": assistant_reply})
 
         if not tool_call:
-            return
+            return current_turn + 1, last_stats
 
         if debug_logger:
             debug_logger.log(
                 "tool.call",
-                f"turn={turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r}",
+                f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r}",
             )
         output = run_tool(
             tool_call,
@@ -110,7 +128,7 @@ def run_agent_turn(
         if debug_logger:
             debug_logger.log(
                 "tool.output",
-                f"turn={turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} output={output}",
+                f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} output={output}",
             )
         messages.append({
             "role": "user",
@@ -120,7 +138,7 @@ def run_agent_turn(
                 "If another tool is needed, call it; otherwise reply to the user now."
             ),
         })
-        turn += 1
+        current_turn += 1
 
 
 def run_loop(
@@ -132,6 +150,7 @@ def run_loop(
     silent_tools: bool,
     yolo_enabled: bool,
     read_only: bool,
+    show_stats: bool,
     plugin_dirs: Optional[Sequence[Path]] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> None:
@@ -157,7 +176,20 @@ def run_loop(
         debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
     allowed_tools = get_allowed_tools(read_only=read_only, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))
     mode_label = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
-    user_prompt = f"{COLOR_GREEN}You [mode: {mode_label}]:{COLOR_RESET} "
+    last_prompt_stats: Optional[LLMCallStats] = None
+
+    def format_user_prompt() -> str:
+        if not show_stats or not last_prompt_stats:
+            return f"{COLOR_GREEN}You [mode: {mode_label}]:{COLOR_RESET} "
+        estimate_mark = "~" if last_prompt_stats.is_estimate else ""
+        stats = (
+            f"in={estimate_mark}{last_prompt_stats.prompt_tokens} "
+            f"out={estimate_mark}{last_prompt_stats.completion_tokens} "
+            f"t={last_prompt_stats.elapsed_s:.2f}s"
+        )
+        return f"{COLOR_GREEN}You [mode: {mode_label} | {stats}]:{COLOR_RESET} "
+
+    user_prompt = format_user_prompt()
     initial_task_list_text = task_manager.render_tasks()
     messages: List[Dict[str, str]] = [build_system_message(base, yolo_enabled, notes, initial_task_list=initial_task_list_text, read_only=read_only, allowed_tools=allowed_tools, plugins=list(plugins.values()))]
     user_input = initial_prompt
@@ -192,7 +224,7 @@ def run_loop(
         messages.append({"role": "user", "content": user_input})
         if debug_logger:
             debug_logger.log("user.input", f"turn={turn} content={user_input}")
-        run_agent_turn(
+        next_turn, last_prompt_stats = run_agent_turn(
             messages,
             client=client,
             turn=turn,
@@ -206,9 +238,11 @@ def run_loop(
             allowed_tools=allowed_tools,
             plugin_tools=plugins,
             task_manager=task_manager,
+            show_stats=show_stats,
             debug_logger=debug_logger,
         )
-        turn += 1
+        turn = next_turn
+        user_prompt = format_user_prompt()
 
         try:
             user_input = input(user_prompt).strip()

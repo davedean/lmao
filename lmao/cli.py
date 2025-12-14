@@ -39,6 +39,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-file", type=str, default=None, help="Read initial prompt from file")
     parser.add_argument("--yolo", action="store_true", help="Enable unsafe 'bash' tool with per-command confirmation (off by default)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log in the working directory")
+    parser.add_argument("--read-only", action="store_true", help="Disable destructive tools (writes/moves/git/bash); for inspection-only sessions")
     return parser
 
 
@@ -72,6 +73,7 @@ def main() -> None:
             max_turns=args.max_turns,
             silent_tools=args.silent_tools,
             yolo_enabled=args.yolo,
+            read_only=args.read_only,
             debug_logger=debug_logger,
         )
     except KeyboardInterrupt:

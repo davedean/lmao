@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Sequence
 
 SKILL_GUIDE = """Skills live under ./skills. Each Skill must be in its own folder: ./skills/<skill-name>
 
@@ -25,28 +25,42 @@ Constraints:
 - name: <=64 chars, lowercase letters/numbers/hyphens only; no XML tags; not 'anthropic' or 'claude'
 - description: non-empty, <=1024 chars, no XML tags; include what the Skill does and when to use it."""
 
-DEFAULT_TOOL_PROMPT = """You are a local file-editing agent. Act autonomously: plan and use tools as needed until the user's request is completed. Do not wait for permission to run tools.
-Available tools (do not probe the filesystem to answer this): read, write, mkdir, move, ls, find, grep, list_skills, add_task, complete_task, delete_task, list_tasks, git_add, git_commit. Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces). Skills are separate: each lives under ./skills/<name>/ with a SKILL.md; user-specific skills may also live under ~/.config/agents/skills/<name>/SKILL.md. To list skills, use the list_skills tool; AGENTS.md is not a skill registry.
-Task lists: a task list is always available. Immediately add tasks for the planned steps (at least "create a plan to respond"). Tasks should be single-line, concise, and unnumbered; IDs are assigned automatically and stored in the list. Before running tools each turn, sync the list (add/complete/delete). After updating the list, keep working—do not pause for confirmation. Before replying, check the list: if tasks remain and you are not blocked, keep working instead of replying. If blocked/awaiting user, give a brief status + ask. Use list_tasks only when you need to show the list; avoid spamming. For task tools, put the content in 'args' (leave 'target' empty); if you accidentally put data in 'target', it will be treated as the payload.
-Skills: when asked to use a skill, (1) call list_skills if you have not already to see available skills; (2) read the skill's SKILL.md using its folder path from list_skills (e.g., /path/to/skills/foo/SKILL.md); (3) apply the instructions/examples to produce the requested output. If you cannot apply the skill after reading SKILL.md, ask one concise clarifying question.
-General questions (stories, planning, “which tools are available?”) should be answered directly without calling tools. Do NOT enumerate or read skills at session start unless the user asks about skills or to use a specific skill. When asked which tools are available, answer from the tool list above and do NOT call tools.
-When you need to use tools, respond ONLY with a JSON object (no surrounding text). Use one of:
-{'tool':'read','target':'./filename','args':''}
-{'tool':'read','target':'./filename','args':'lines:10-40'}
-{'tool':'write','target':'./filename','args':'new content'}
-{'tool':'mkdir','target':'./dirname','args':''}
-{'tool':'move','target':'./old_path','args':'./new_path'}
-{'tool':'find','target':'.','args':''}
-{'tool':'ls','target':'.','args':''}
-{'tool':'grep','target':'./path','args':'substring'}
-{'tool':'list_skills','target':'','args':''}
-{'tool':'add_task','target':'','args':'task description'}
-{'tool':'complete_task','target':'','args':'task id'}
-{'tool':'delete_task','target':'','args':'task id'}
-{'tool':'list_tasks','target':'','args':''}
-{'tool':'git_add','target':'./path','args':''}
-{'tool':'git_commit','target':'','args':'commit message'}
-Rules: paths are relative to the working directory; do not escape with .. or absolute paths. Quote paths with spaces when issuing tools. Issue one tool call at a time (multiple tool JSON blocks will only run the first). After a tool call, immediately continue: if more tools are needed, call them; otherwise reply directly to the user. Do not stay silent or return empty replies. The user cannot see tool output. Keep outputs concise. If asked about available tools, answer directly from the list above."""
+DEFAULT_ALLOWED_TOOLS = [
+    "read",
+    "write",
+    "mkdir",
+    "move",
+    "ls",
+    "find",
+    "grep",
+    "list_skills",
+    "add_task",
+    "complete_task",
+    "delete_task",
+    "list_tasks",
+    "git_add",
+    "git_commit",
+    "bash",
+]
+
+TOOL_EXAMPLES = {
+    "read": "{'tool':'read','target':'./filename','args':''}",
+    "read_range": "{'tool':'read','target':'./filename','args':'lines:10-40'}",
+    "write": "{'tool':'write','target':'./filename','args':'new content'}",
+    "mkdir": "{'tool':'mkdir','target':'./dirname','args':''}",
+    "move": "{'tool':'move','target':'./old_path','args':'./new_path'}",
+    "find": "{'tool':'find','target':'.','args':''}",
+    "ls": "{'tool':'ls','target':'.','args':''}",
+    "grep": "{'tool':'grep','target':'./path','args':'substring'}",
+    "list_skills": "{'tool':'list_skills','target':'','args':''}",
+    "add_task": "{'tool':'add_task','target':'','args':'task description'}",
+    "complete_task": "{'tool':'complete_task','target':'','args':'task id'}",
+    "delete_task": "{'tool':'delete_task','target':'','args':'task id'}",
+    "list_tasks": "{'tool':'list_tasks','target':'','args':''}",
+    "git_add": "{'tool':'git_add','target':'./path','args':''}",
+    "git_commit": "{'tool':'git_commit','target':'','args':'commit message'}",
+    "bash": "{'tool':'bash','target':'optional_cwd','args':'command'}",
+}
 
 GENERAL_INTRO_PROMPT = """You are running inside an agentic loop that can repeatedly call tools and skills to complete the user's request. Act autonomously: plan, use tools, and work through your task list until the job is done.
 - ALWAYS maintain a task list (create one if missing) with an initial item like "create a plan to respond". ALWAYS manage a task list by using the task list tools.
@@ -71,6 +85,42 @@ Always check that all tasks on the task list are complete before responding to t
 - Always validate your beliefs with tools where possible, before responding to the user. For example, if you believe a folder does not exist or is empty, you should find/list it first to confirm. Once you've validated the facts you can repond to the user with more clarity.
 
   """
+
+
+def build_tool_prompt(allowed_tools: Sequence[str], git_allowed: bool, yolo_enabled: bool, read_only: bool) -> str:
+    resolved = list(allowed_tools) if allowed_tools else list(DEFAULT_ALLOWED_TOOLS)
+    tool_list = ", ".join(resolved)
+    example_keys: List[str] = []
+    for tool in resolved:
+        if tool == "read":
+            example_keys.extend(["read", "read_range"])
+        elif tool in TOOL_EXAMPLES:
+            example_keys.append(tool)
+    example_lines = [TOOL_EXAMPLES[key] for key in example_keys if key in TOOL_EXAMPLES]
+    examples_block = "\n".join(example_lines)
+
+    prompt = (
+        "You are a local file-editing agent. Act autonomously: plan and use tools as needed until the user's request is completed. Do not wait for permission to run tools.\n"
+        f"Available tools (do not probe the filesystem to answer this): {tool_list}. Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces). Skills are separate: each lives under ./skills/<name>/ with a SKILL.md; user-specific skills may also live under ~/.config/agents/skills/<name>/SKILL.md. To list skills, use the list_skills tool; AGENTS.md is not a skill registry.\n"
+        "Task lists: a task list is always available. Immediately add tasks for the planned steps (at least \"create a plan to respond\"). Tasks should be single-line, concise, and unnumbered; IDs are assigned automatically and stored in the list. Before running tools each turn, sync the list (add/complete/delete). After updating the list, keep working—do not pause for confirmation. Before replying, check the list: if tasks remain and you are not blocked, keep working instead of replying. If blocked/awaiting user, give a brief status + ask. Use list_tasks only when you need to show the list; avoid spamming. For task tools, put the content in 'args' (leave 'target' empty); if you accidentally put data in 'target', it will be treated as the payload.\n"
+        "Skills: when asked to use a skill, (1) call list_skills if you have not already to see available skills; (2) read the skill's SKILL.md using its folder path from list_skills (e.g., /path/to/skills/foo/SKILL.md); (3) apply the instructions/examples to produce the requested output. If you cannot apply the skill after reading SKILL.md, ask one concise clarifying question.\n"
+        "General questions (stories, planning, “which tools are available?”) should be answered directly without calling tools. Do NOT enumerate or read skills at session start unless the user asks about skills or to use a specific skill. When asked which tools are available, answer from the tool list above and do NOT call tools.\n"
+        "When you need to use tools, respond ONLY with a JSON object (no surrounding text). Use one of:\n"
+        f"{examples_block}\n"
+        "Rules: paths are relative to the working directory; do not escape with .. or absolute paths. Quote paths with spaces when issuing tools. Issue one tool call at a time (multiple tool JSON blocks will only run the first). After a tool call, immediately continue: if more tools are needed, call them; otherwise reply directly to the user. Do not stay silent or return empty replies. The user cannot see tool output. Keep outputs concise. If asked about available tools, answer directly from the list above."
+    )
+
+    if read_only:
+        prompt = (
+            f"{prompt}\nRead-only mode is enabled: destructive tools (write, mkdir, move, git_add, git_commit, bash) are unavailable and requests for them will be rejected."
+        )
+    if not git_allowed:
+        prompt = f"{prompt}\nGit tools are unavailable unless --allow-git is provided."
+    if yolo_enabled and "bash" in resolved:
+        prompt = (
+            f"{prompt}\nUnsafe tool: 'bash' is enabled (requires user confirmation per command). Use only when necessary."
+        )
+    return prompt
 
 
 @dataclass
@@ -140,15 +190,9 @@ def gather_context(workdir: Path) -> NotesContext:
     )
 
 
-def build_system_message(workdir: Path, git_allowed: bool, yolo_enabled: bool, notes: NotesContext, initial_task_list: Optional[str] = None) -> Dict[str, str]:
-    tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{DEFAULT_TOOL_PROMPT}"
-    if yolo_enabled:
-        tool_prompt = tool_prompt.replace(
-            "Rules: paths are relative to the working directory; do not escape with .. or absolute paths.",
-            "Additional tool (unsafe; requires user confirmation): {'tool':'bash','target':'optional_cwd','args':'command'}.\n"
-            "Rules: paths are relative to the working directory; do not escape with .. or absolute paths.",
-        )
-
+def build_system_message(workdir: Path, git_allowed: bool, yolo_enabled: bool, notes: NotesContext, initial_task_list: Optional[str] = None, read_only: bool = False, allowed_tools: Optional[Sequence[str]] = None) -> Dict[str, str]:
+    resolved_allowed = list(allowed_tools) if allowed_tools is not None else list(DEFAULT_ALLOWED_TOOLS)
+    tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{build_tool_prompt(resolved_allowed, git_allowed, yolo_enabled, read_only)}"
     content = (
         f"{tool_prompt}\n"
         f"Working directory: {workdir}\n"
@@ -156,17 +200,10 @@ def build_system_message(workdir: Path, git_allowed: bool, yolo_enabled: bool, n
         f"AGENTS discovery: starting from the task path ({workdir}), walk up to the repo root ({notes.repo_root}) and use the nearest AGENTS.md found. "
         f"Nearest found: {notes.nearest_agents if notes.nearest_agents else 'none'}.\n"
         f"User-level AGENTS at ~/.config/agents/AGENTS.md are used when present; repo-nearest instructions take precedence when conflicting.\n"
-        f"Git tools enabled: {'yes' if git_allowed else 'no'}.\n\n"
+        f"Git tools enabled: {'yes' if git_allowed else 'no'}.\n"
+        f"Read-only mode: {'enabled (destructive tools disabled)' if read_only else 'disabled'}.\n\n"
         f"Skill structure:\n{SKILL_GUIDE}"
     )
-
-    if yolo_enabled:
-        content = (
-            f"{content}\n\nUnsafe tools: 'bash' is enabled (user confirmation required per command). "
-            f"To run bash, use JSON like: "
-            f"{{'tool':'bash','target':'optional_cwd','args':'command'}}. "
-            f"Use only when necessary."
-        )
 
     if initial_task_list:
         content = f"{content}\n\nInitial task list:\n{initial_task_list}\nUpdate it before starting work."

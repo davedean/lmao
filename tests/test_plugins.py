@@ -160,3 +160,72 @@ class PluginLoaderTests(TestCase):
             )
         payload_ok = json.loads(result_ok)
         self.assertTrue(payload_ok["success"])
+
+
+class BuiltinPluginTests(TestCase):
+    def setUp(self) -> None:
+        self.base = Path(tempfile.mkdtemp()).resolve()
+        tools_dir = Path(__file__).resolve().parent.parent / "lmao" / "tools"
+        self.plugins = discover_plugins([tools_dir], self.base, allow_outside_base=True)
+
+    def tearDown(self) -> None:
+        try:
+            for child in self.base.glob("*"):
+                if child.is_file():
+                    child.unlink()
+                elif child.is_dir():
+                    for p in sorted(child.rglob("*"), reverse=True):
+                        if p.is_file():
+                            p.unlink()
+                    child.rmdir()
+            self.base.rmdir()
+        except Exception:
+            pass
+
+    def test_git_plugins_respect_read_only(self) -> None:
+        # No repo present: both should error, but still be allowed in normal/yolo
+        allowed_normal = get_allowed_tools(read_only=False, yolo_enabled=False, plugins=self.plugins.values())
+        self.assertIn("git_add", allowed_normal)
+        self.assertIn("git_commit", allowed_normal)
+
+        allowed_read_only = get_allowed_tools(read_only=True, yolo_enabled=False, plugins=self.plugins.values())
+        self.assertNotIn("git_add", allowed_read_only)
+        self.assertNotIn("git_commit", allowed_read_only)
+
+    def test_all_core_plugins_discovered(self) -> None:
+        core_names = {
+            "read",
+            "write",
+            "mkdir",
+            "move",
+            "ls",
+            "find",
+            "grep",
+            "list_skills",
+            "add_task",
+            "complete_task",
+            "delete_task",
+            "list_tasks",
+            "git_add",
+            "git_commit",
+            "bash",
+        }
+        self.assertTrue(core_names.issubset(self.plugins.keys()))
+
+    def test_bash_plugin_always_confirms(self) -> None:
+        allowed = get_allowed_tools(read_only=False, yolo_enabled=False, plugins=self.plugins.values())
+        self.assertIn("bash", allowed)
+
+        call = ToolCall(tool="bash", target="", args="echo ok")
+        with patch("builtins.input", return_value="n"):
+            result = run_tool(
+                call,
+                base=self.base,
+                extra_roots=[],
+                skill_roots=[],
+                yolo_enabled=False,
+                plugin_tools=self.plugins,
+            )
+        payload = json.loads(result)
+        self.assertFalse(payload["success"])
+        self.assertIn("not approved", payload["error"])

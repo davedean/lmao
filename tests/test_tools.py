@@ -149,3 +149,11 @@ class ToolSafetyTests(TestCase):
         list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], git_allowed=False, yolo_enabled=False, task_manager=manager)
         list_payload = json.loads(list_out)
         self.assertIn("[ ] 2 do something multiline", list_payload["data"]["render"])
+
+    def test_read_only_blocks_destructive_tools(self) -> None:
+        target = self.base / "notes.txt"
+        call = ToolCall(tool="write", target=str(target), args="content")
+        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], git_allowed=False, yolo_enabled=False, read_only=True)
+        payload = json.loads(output)
+        self.assertFalse(payload["success"])
+        self.assertIn("read-only", payload["error"])

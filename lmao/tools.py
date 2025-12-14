@@ -32,6 +32,33 @@ ALLOWED_TOOLS = {
     "list_tasks",
 }
 
+READ_ONLY_DISABLED_TOOLS = {
+    "write",
+    "mkdir",
+    "move",
+    "git_add",
+    "git_commit",
+    "bash",
+}
+
+TOOL_ORDER = [
+    "read",
+    "write",
+    "mkdir",
+    "move",
+    "ls",
+    "find",
+    "grep",
+    "list_skills",
+    "add_task",
+    "complete_task",
+    "delete_task",
+    "list_tasks",
+    "git_add",
+    "git_commit",
+    "bash",
+]
+
 def json_success(tool: str, data: Any, note: Optional[str] = None) -> str:
     payload: Dict[str, Any] = {"tool": tool, "success": True, "data": data}
     if note:
@@ -61,9 +88,23 @@ class ToolCall:
     args: str
 
     @classmethod
-    def from_raw_message(cls, raw_text: str) -> Optional["ToolCall"]:
-        calls = parse_tool_calls(raw_text)
+    def from_raw_message(cls, raw_text: str, allowed_tools: Optional[Sequence[str]] = None) -> Optional["ToolCall"]:
+        calls = parse_tool_calls(raw_text, allowed_tools=allowed_tools)
         return calls[0] if calls else None
+
+
+def get_allowed_tools(read_only: bool, git_allowed: bool, yolo_enabled: bool) -> List[str]:
+    allowed: List[str] = []
+    disabled = READ_ONLY_DISABLED_TOOLS if read_only else set()
+    for tool in TOOL_ORDER:
+        if tool in disabled:
+            continue
+        if tool in {"git_add", "git_commit"} and not git_allowed:
+            continue
+        if tool == "bash" and not yolo_enabled:
+            continue
+        allowed.append(tool)
+    return allowed
 
 
 def iter_json_candidates(raw_text: str) -> List[str]:
@@ -85,8 +126,9 @@ def iter_json_candidates(raw_text: str) -> List[str]:
     return unique
 
 
-def parse_tool_calls(raw_text: str) -> List[ToolCall]:
+def parse_tool_calls(raw_text: str, allowed_tools: Optional[Sequence[str]] = None) -> List[ToolCall]:
     calls: List[ToolCall] = []
+    allowed = set(allowed_tools) if allowed_tools is not None else ALLOWED_TOOLS
     for candidate in iter_json_candidates(raw_text):
         parsed = load_candidate(candidate)
         if not parsed:
@@ -187,6 +229,7 @@ def run_tool(
     skill_roots: Sequence[Path],
     git_allowed: bool,
     yolo_enabled: bool,
+    read_only: bool = False,
     task_manager: Optional[TaskListManager] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> str:
@@ -202,6 +245,9 @@ def run_tool(
 
     if tool not in ALLOWED_TOOLS:
         return json_error(tool, f"unsupported tool '{tool}'")
+
+    if read_only and tool in READ_ONLY_DISABLED_TOOLS:
+        return json_error(tool, f"tool '{tool}' is disabled in read-only mode")
 
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)

@@ -9,7 +9,7 @@ from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
 from .llm import LLMClient
 from .task_list import TaskListManager
-from .tools import ToolCall, parse_tool_calls, run_tool, summarize_output
+from .tools import ToolCall, get_allowed_tools, parse_tool_calls, run_tool, summarize_output
 
 COLOR_BLUE = "\033[94m"
 COLOR_GREEN = "\033[92m"
@@ -28,6 +28,8 @@ def run_agent_turn(
     git_allowed: bool,
     max_tool_output: Tuple[int, int],
     yolo_enabled: bool,
+    read_only: bool,
+    allowed_tools: Sequence[str],
     task_manager: TaskListManager,
     debug_logger: Optional[DebugLogger] = None,
 ) -> None:
@@ -57,7 +59,7 @@ def run_agent_turn(
         if debug_logger:
             debug_logger.log("assistant.reply", f"turn={turn} content={assistant_reply}")
         empty_replies = 0
-        tool_calls = parse_tool_calls(assistant_reply)
+        tool_calls = parse_tool_calls(assistant_reply, allowed_tools=allowed_tools)
         tool_call = tool_calls[0] if tool_calls else None
         is_tool_phase = tool_call is not None
         label_color = COLOR_BLUE
@@ -83,6 +85,7 @@ def run_agent_turn(
             skill_roots,
             git_allowed,
             yolo_enabled,
+            read_only=read_only,
             task_manager=task_manager,
             debug_logger=debug_logger,
         )
@@ -128,13 +131,14 @@ def run_loop(
     max_turns: Optional[int],
     silent_tools: bool,
     yolo_enabled: bool,
+    read_only: bool,
     debug_logger: Optional[DebugLogger] = None,
 ) -> None:
     task_manager = TaskListManager()
     base = workdir.resolve()
     if debug_logger:
         debug_logger.log("debug.enabled", f"writing debug logs to {debug_logger.path}")
-        debug_logger.log("context", f"workdir={base} git_allowed={git_allowed} yolo_enabled={yolo_enabled}")
+        debug_logger.log("context", f"workdir={base} git_allowed={git_allowed} yolo_enabled={yolo_enabled} read_only={read_only}")
 
     notes = gather_context(base)
     # Seed a default task list so the model starts with a plan step (task list always exists)
@@ -147,8 +151,9 @@ def run_loop(
         extra_roots.append(resolved_user_skills)
         skill_roots.append(resolved_user_skills)
 
+    allowed_tools = get_allowed_tools(read_only=read_only, git_allowed=git_allowed, yolo_enabled=yolo_enabled)
     initial_task_list_text = task_manager.render_tasks()
-    messages: List[Dict[str, str]] = [build_system_message(base, git_allowed, yolo_enabled, notes, initial_task_list=initial_task_list_text)]
+    messages: List[Dict[str, str]] = [build_system_message(base, git_allowed, yolo_enabled, notes, initial_task_list=initial_task_list_text, read_only=read_only, allowed_tools=allowed_tools)]
     user_input = initial_prompt
     turn = 1
 
@@ -192,6 +197,8 @@ def run_loop(
             git_allowed=git_allowed,
             max_tool_output=max_tool_output if not silent_tools else (0, 0),
             yolo_enabled=yolo_enabled,
+            read_only=read_only,
+            allowed_tools=allowed_tools,
             task_manager=task_manager,
             debug_logger=debug_logger,
         )

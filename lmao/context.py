@@ -26,23 +26,9 @@ Constraints:
 - name: <=64 chars, lowercase letters/numbers/hyphens only; no XML tags; not 'anthropic' or 'claude'
 - description: non-empty, <=1024 chars, no XML tags; include what the Skill does and when to use it."""
 
-DEFAULT_ALLOWED_TOOLS = [
-    "read",
-    "write",
-    "mkdir",
-    "move",
-    "ls",
-    "find",
-    "grep",
-    "list_skills",
-    "add_task",
-    "complete_task",
-    "delete_task",
-    "list_tasks",
-    "git_add",
-    "git_commit",
-    "bash",
-]
+# When not provided, the allowed tool list should come from discovered plugins;
+# this fallback remains empty to avoid drifting from runtime discovery.
+DEFAULT_ALLOWED_TOOLS: list[str] = []
 
 TOOL_EXAMPLES = {
     "read": "{'tool':'read','target':'./filename','args':''}",
@@ -90,7 +76,7 @@ Always check that all tasks on the task list are complete before responding to t
 
 def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_only: bool) -> str:
     resolved = list(allowed_tools) if allowed_tools else list(DEFAULT_ALLOWED_TOOLS)
-    tool_list = ", ".join(resolved)
+    tool_list = ", ".join(resolved) if resolved else "(no tools discovered)"
     example_keys: List[str] = []
     for tool in resolved:
         if tool == "read":

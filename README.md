@@ -22,8 +22,8 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 
 ## Behavior & Tools
 - Default tools: `read`, `write`, `mkdir`, `move`, `ls`, `find`, `grep`, `list_skills`, plus task-list helpers (`add_task`, `complete_task`, `delete_task`, `list_tasks`). Git tools (`git_add`, `git_commit`) ship as plugins under `lmao/tools/git-*` and are available in normal/yolo modes (blocked in `--read-only`). Tool outputs are JSON (`success` + `data`/`error`) to keep paths with spaces unambiguous.
-- Optional tool: `bash` prompts for confirmation on every command; it is available unless `--read-only` is set.
-- Read-only mode: pass `--read-only` to disable destructive tools (`write`, `mkdir`, `move`, `git_add`, `git_commit`, `bash`) for inspection-only runs.
+- Optional tool: `bash` ships as a plugin and prompts for confirmation on every command; it is available unless `--read-only` is set.
+- Read-only mode: pass `--read-only` to disable destructive tools (`write`, `mkdir`, `move`) and any plugin that opts out of read-only (git/bash by default) for inspection-only runs.
 - Pluggable tools: shipped plugins under `lmao/tools` are loaded automatically (see `lmao/tools/demo-plugin/tool.py` for a minimal echo example). Additional plugin directories are not yet supported via CLI.
 - Path safety: all tool paths are constrained to the working directory. User skill folders under `~/.config/agents/skills` are also allowed when present.
 - Task lists: each run starts with an active list (seeded with “create a plan to respond”). The agent is expected to keep the list in sync while it works instead of pausing for confirmation.
@@ -35,8 +35,8 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 ## Plugin Tools
 - Shipped plugins under `lmao/tools` are loaded automatically. Each plugin file should be named `tool.py`.
 - Convention: keep plugins under `lmao/tools/<plugin-name>/tool.py` to avoid mixing with skills.
-- Manifest shape: `PLUGIN = {"name": "my_tool", "description": "...", "api_version": PLUGIN_API_VERSION, "is_destructive": bool, "allow_in_read_only": bool, "allow_in_normal": bool, "allow_in_yolo": bool, "input_schema": "<freeform>"}` plus a callable `run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None) -> str` that returns the usual JSON payload.
-- Gating: plugin allow-listing follows the allow flags above. Read-only mode blocks plugins unless `allow_in_read_only` is true. Yolo mode includes plugins allowed in normal plus any that require yolo (`allow_in_normal=False, allow_in_yolo=True`). They must not escape the working directory; use `safe_target_path` if you manipulate paths.
+- Manifest shape: `PLUGIN = {"name": "my_tool", "description": "...", "api_version": PLUGIN_API_VERSION, "is_destructive": bool, "allow_in_read_only": bool, "allow_in_normal": bool, "allow_in_yolo": bool, "always_confirm": bool, "input_schema": "<freeform>"}` plus a callable `run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None) -> str` that returns the usual JSON payload.
+- Gating: plugin allow-listing follows the allow flags above. Read-only mode blocks plugins unless `allow_in_read_only` is true. Yolo mode includes plugins allowed in normal plus any that require yolo (`allow_in_normal=False, allow_in_yolo=True`). Set `always_confirm: true` to prompt the user on every call (used by bash). They must not escape the working directory; use `safe_target_path` if you manipulate paths.
 - Example plugin: `tools/demo-plugin/tool.py` echoes the incoming target/args to demonstrate the API.
 
 ## CLI Flags (excerpt)
@@ -50,8 +50,8 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 Environment defaults: `LM_STUDIO_URL`, `LM_STUDIO_MODEL` populate `--endpoint`/`--model`.
 
 ## Safety Notes
-- Git plugins are available by default but blocked in `--read-only`; they still require a git repo. Bash always asks for confirmation.
-- Read-only mode blocks destructive tools regardless of other flags.
+- Git and bash plugins are available by default but blocked in `--read-only`; they still require a git repo. Bash always asks for confirmation; other plugins can opt in with `always_confirm`.
+- Read-only mode blocks destructive tools regardless of other flags; plugins that disallow read-only are hidden.
 - Moves refuse to overwrite existing destinations.
 - Path resolution blocks `..`/absolute escapes outside allowed roots.
 

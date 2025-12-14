@@ -39,9 +39,6 @@ DEFAULT_ALLOWED_TOOLS = [
     "complete_task",
     "delete_task",
     "list_tasks",
-    "git_add",
-    "git_commit",
-    "bash",
 ]
 
 TOOL_EXAMPLES = {
@@ -68,7 +65,7 @@ GENERAL_INTRO_PROMPT = """You are running inside an agentic loop that can repeat
 - Use one tool call at a time; do not batch multiple JSON blocks.
 - Put payloads in 'args' (leave 'target' empty unless it's a path); quote paths with spaces.
 - Use skills by reading their SKILL.md and following instructions; do not guess.
-- Avoid tools for trivial Q&A; only call bash if explicitly needed and enabled.
+- Avoid tools for trivial Q&A; prefer non-destructive tools when possible.
 - After updating the task list or running a tool, keep working—do not pause for confirmation unless blocked.
 - If a tool fails, adjust and retry once before asking the user.
 - Mid-work replies should be brief: status + next action or what you need.
@@ -113,7 +110,7 @@ def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_onl
 
     if read_only:
         prompt = (
-            f"{prompt}\nRead-only mode is enabled: destructive tools (write, mkdir, move, git_add, git_commit, bash) are unavailable and requests for them will be rejected."
+            f"{prompt}\nRead-only mode is enabled: destructive tools (write, mkdir, move) and plugins that disallow read-only are unavailable; requests for them will be rejected."
         )
     if "bash" in resolved:
         prompt = f"{prompt}\nNote: 'bash' prompts for confirmation on every command. Use only when necessary."

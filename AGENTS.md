@@ -9,11 +9,11 @@
 - Tests live in `tests/` (unittest-based).
 
 ## Runtime Behavior & Tools
-- Default tools: read, write, mkdir, move, ls, find, grep, list_skills, task list tools (add/complete/delete/list), git_add/git_commit (plugins), and bash. Tool outputs are JSON (`success` + `data`/`error`); only the first tool call in a message runs.
+- Default tools: read, write, mkdir, move, ls, find, grep, list_skills, task list tools (add/complete/delete/list), plus plugins (git_add/git_commit, bash). Tool outputs are JSON (`success` + `data`/`error`); only the first tool call in a message runs.
 - Task list is always present and seeded with “create a plan to respond”; use task tools to keep it updated before replying.
 - Path safety keeps targets under the working directory; writes into skill roots must stay inside `skills/<name>/`.
-- Plugins: any `tool.py` under `lmao/tools/**` is loaded; plugin manifest controls if it is allowed in read-only, normal, or yolo modes. Git add/commit ship as plugins under `lmao/tools/git-add` and `lmao/tools/git-commit`; they are available in normal/yolo but blocked in read-only.
-- Read-only mode disables write/mkdir/move/bash and any plugin that opts out of read-only (most destructive ones).
+- Plugins: any `tool.py` under `lmao/tools/**` is loaded; plugin manifest controls if it is allowed in read-only, normal, or yolo modes, and whether it needs per-use confirmation. Git add/commit and bash ship as plugins under `lmao/tools/git-*` and `lmao/tools/bash`; they are available in normal/yolo but blocked in read-only. Bash always asks for confirmation.
+- Read-only mode disables write/mkdir/move and any plugin that opts out of read-only (most destructive ones).
 
 ## Build, Test, and Development Commands
 - `python -m lmao --help` — show CLI flags and defaults.
@@ -36,6 +36,6 @@
 - In PRs, describe the behavior change, note any CLI flag additions, and include example commands or transcripts for new flows. Link issues when relevant and call out safety-sensitive changes (`--yolo`, path handling).
 
 ## Security & Configuration Tips
-- Git plugins are loaded by default; they are blocked in read-only mode. The optional `--yolo` flag is intended for riskier flows; bash always prompts for confirmation.
+- Git and bash plugins are loaded by default; they are blocked in read-only mode. The optional `--yolo` flag is intended for riskier flows; bash always prompts for confirmation (other plugins can opt into per-call confirmation via `always_confirm`).
 - Path safety blocks escapes outside the working directory; when adding tools, preserve those checks. User-specific notes and skills can live in `~/.config/agents/`, but repo-local `AGENTS.md` takes precedence.
 - Moves refuse to overwrite existing destinations. User-level AGENTS/skills are allowed roots but the nearest repo AGENTS wins on conflicts.

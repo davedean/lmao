@@ -21,6 +21,7 @@ class PluginTool:
     allow_in_read_only: bool
     allow_in_normal: bool
     allow_in_yolo: bool
+    always_confirm: bool
     handler: Callable[..., str]
     path: Path
 
@@ -49,6 +50,8 @@ def _validate_manifest(manifest: Dict[str, Any]) -> Optional[str]:
         value = manifest.get(key, None)
         if value is not None and not isinstance(value, bool):
             return f"{key} must be a boolean when provided"
+    if manifest.get("always_confirm", None) is not None and not isinstance(manifest.get("always_confirm"), bool):
+        return "always_confirm must be a boolean when provided"
     return None
 
 
@@ -101,6 +104,7 @@ def load_plugin(path: Path, base: Path, debug_logger: Optional[DebugLogger] = No
             allow_in_read_only=bool(manifest.get("allow_in_read_only", not is_destructive)),
             allow_in_normal=bool(manifest.get("allow_in_normal", True)),
             allow_in_yolo=bool(manifest.get("allow_in_yolo", True)),
+            always_confirm=bool(manifest.get("always_confirm", False)),
             handler=handler,
             path=resolved,
         )

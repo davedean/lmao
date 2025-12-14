@@ -38,7 +38,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-file", type=str, default=None, help="Read initial prompt from file")
     parser.add_argument("--yolo", action="store_true", help="Enable unsafe 'bash' tool with per-command confirmation (off by default)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log in the working directory")
-    parser.add_argument("--read-only", action="store_true", help="Disable destructive tools (writes/moves/git/bash); for inspection-only sessions")
+    parser.add_argument("--read-only", action="store_true", help="Disable destructive tools and any plugin that disallows read-only; for inspection-only sessions")
     return parser
 
 

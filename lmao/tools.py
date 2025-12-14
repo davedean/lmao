@@ -4,7 +4,6 @@ import ast
 import json
 import os
 import re
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -22,7 +21,6 @@ BUILTIN_TOOLS = {
     "ls",
     "mkdir",
     "move",
-    "bash",
     "list_skills",
     "add_task",
     "complete_task",
@@ -34,7 +32,6 @@ READ_ONLY_DISABLED_TOOLS = {
     "write",
     "mkdir",
     "move",
-    "bash",
 }
 
 TOOL_ORDER = [
@@ -50,7 +47,6 @@ TOOL_ORDER = [
     "complete_task",
     "delete_task",
     "list_tasks",
-    "bash",
 ]
 
 def json_success(tool: str, data: Any, note: Optional[str] = None) -> str:
@@ -231,6 +227,15 @@ def plugin_allowed(plugin: PluginTool, read_only: bool, yolo_enabled: bool) -> b
     return plugin.allow_in_normal
 
 
+def confirm_plugin_run(plugin: PluginTool, target: str, args: str) -> bool:
+    prompt = f"[{plugin.name}] allow run? target={target!r} args={args!r} [y/N]: "
+    try:
+        approval = input(prompt).strip().lower()
+    except EOFError:
+        approval = ""
+    return approval.startswith("y")
+
+
 def run_tool(
     tool_call: ToolCall,
     base: Path,
@@ -272,6 +277,9 @@ def run_tool(
         if not plugin_allowed(plugin, read_only, yolo_enabled):
             mode = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
             return json_error(tool, f"plugin '{tool}' is not allowed in {mode} mode")
+        if plugin.always_confirm:
+            if not confirm_plugin_run(plugin, target, args):
+                return json_error(tool, f"plugin '{tool}' not approved by user")
         try:
             result = plugin.handler(
                 target,
@@ -499,41 +507,6 @@ def run_tool(
         if tool == "list_tasks":
             data = {"tasks": task_manager.to_payload(), "render": task_manager.render_tasks()}
             return json_success(tool, data)
-
-    if tool == "bash":
-        if not yolo_enabled:
-            return json_error(tool, "bash tool is disabled (enable with --yolo)")
-        command = str(args or target).strip()
-        if not command:
-            return json_error(tool, "bash command is empty")
-        cwd = base
-        if target and args:
-            try:
-                cwd = safe_target_path(target, base, extra_roots)
-            except Exception:
-                return json_error(tool, f"cwd '{target}' escapes allowed roots")
-        print(f"[bash request] {command}")
-        try:
-            approval = input("Allow running this bash command? [y/N]: ").strip().lower()
-        except EOFError:
-            approval = ""
-        if not approval.startswith("y"):
-            return json_error(tool, "bash command not approved by user")
-        try:
-            result = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True, timeout=120)
-            if result.returncode != 0:
-                return json_error(
-                    tool,
-                    f"bash exit {result.returncode}",
-                )
-            data = {
-                "stdout": result.stdout.strip(),
-                "stderr": result.stderr.strip(),
-                "exit_code": result.returncode,
-            }
-            return json_success(tool, data)
-        except Exception as exc:
-            return json_error(tool, f"bash exception: {exc}")
 
     if tool == "list_skills":
         skills = list_skill_info(skill_roots)

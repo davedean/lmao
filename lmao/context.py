@@ -30,33 +30,21 @@ Constraints:
 # this fallback remains empty to avoid drifting from runtime discovery.
 DEFAULT_ALLOWED_TOOLS: list[str] = []
 
-GENERAL_INTRO_PROMPT = """You are running inside an agentic loop that can repeatedly call tools and skills to complete the user's request. Act autonomously: plan, use tools, and work through your task list until the job is done.
-- ALWAYS maintain a task list (create one if missing) with an initial item like "create a plan to respond". ALWAYS manage a task list by using the task list tools.
-- Use one tool call at a time; do not batch multiple JSON blocks.
-- Put payloads in 'args' (leave 'target' empty unless it's a path); quote paths with spaces.
-- Use skills by reading their SKILL.md and following instructions; do not guess.
-- Avoid tools for trivial Q&A; prefer non-destructive tools when possible.
-- After updating the task list or running a tool, keep working—do not pause for confirmation unless blocked.
-- If a tool fails, adjust and retry once before asking the user.
-- Mid-work replies should be brief: status + next action or what you need.
+GENERAL_INTRO_PROMPT = """You are running inside an agentic loop with tools. Act autonomously: plan, use tools, and keep going until the user's request is done.
 
-Always use the task list tool to manage the task list before starting work. Add tasks you are intending to do onto the task list (one task list item per task).
+Task list: manage it with the task tools (seed with "create a plan to respond"). Keep items concise and up to date before replying; if tasks remain and you're not blocked, keep working instead of replying.
 
-Items on the task list should be kept up-to-date in terms of completion, by updating them before responding to the user.
+Tooling: one tool call at a time; payloads go in 'args' (use 'target' only for paths). Avoid tools for trivial Q&A, and prefer non-destructive tools when possible. Validate assumptions with tools when you can; if a tool fails, adjust and retry once before asking the user.
 
-Items on the task list should be checked for incomplete tasks before responding to the user.
+Flow: after updating the task list or running a tool, continue without pausing for confirmation. Mid-work replies should be brief: status plus next action or what you need.
 
-If there are incomplete tasks on the task list, you should complete them before responding to the user.
-
-Always check that all tasks on the task list are complete before responding to the user.
-
-- Always validate your beliefs with tools where possible, before responding to the user. For example, if you believe a folder does not exist or is empty, you should find/list it first to confirm. Once you've validated the facts you can repond to the user with more clarity.
-
-Skills and general Q&A:
-- Skills: when asked to use a skill, (1) call list_skills if you have not already to see available skills; (2) read the skill's SKILL.md using its folder path from list_skills; (3) apply the instructions/examples to produce the requested output. If you cannot apply the skill after reading SKILL.md, ask one concise clarifying question.
-- General questions (stories, planning, “which tools are available?”) should be answered directly without calling tools. Do NOT enumerate or read skills at session start unless the user asks about skills or to use a specific skill. When asked which tools are available, answer from the tool list without running tools.
-
+General Q&A should be answered directly without calling tools unless needed.
   """
+
+SKILL_USAGE_PROMPT = """Skills live under ./skills/<name>/SKILL.md and may also exist under ~/.config/agents/skills/<name>/SKILL.md.
+- When asked to use a skill, call list_skills if you need the paths, then read that SKILL.md and follow its instructions/examples exactly; do not guess.
+- Do not enumerate or read skills unless the user asks about skills or requests one.
+- If you cannot apply the skill after reading, ask one concise clarifying question."""
 
 
 def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_only: bool, plugins: Optional[Sequence[PluginTool]] = None) -> str:
@@ -159,7 +147,7 @@ def build_system_message(workdir: Path, yolo_enabled: bool, notes: NotesContext,
     resolved_allowed = list(allowed_tools) if allowed_tools is not None else list(DEFAULT_ALLOWED_TOOLS)
     tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{build_tool_prompt(resolved_allowed, yolo_enabled, read_only, plugins=plugins)}"
     content = (
-        f"{tool_prompt}\n"
+        f"{tool_prompt}\n\n{SKILL_USAGE_PROMPT}\n"
         f"Working directory: {workdir}\n"
         f"All tool paths are relative to this directory.\n"
         f"AGENTS discovery: starting from the task path ({workdir}), walk up to the repo root ({notes.repo_root}) and use the nearest AGENTS.md found. "

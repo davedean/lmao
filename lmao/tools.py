@@ -11,10 +11,11 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .context import find_repo_root
 from .debug_log import DebugLogger
+from .plugins import PluginTool
 from .skills import list_skill_info, validate_skill_write_target
 from .task_list import TaskListManager
 
-ALLOWED_TOOLS = {
+BUILTIN_TOOLS = {
     "read",
     "write",
     "grep",
@@ -93,7 +94,7 @@ class ToolCall:
         return calls[0] if calls else None
 
 
-def get_allowed_tools(read_only: bool, git_allowed: bool, yolo_enabled: bool) -> List[str]:
+def get_allowed_tools(read_only: bool, git_allowed: bool, yolo_enabled: bool, plugins: Optional[Sequence["PluginTool"]] = None) -> List[str]:
     allowed: List[str] = []
     disabled = READ_ONLY_DISABLED_TOOLS if read_only else set()
     for tool in TOOL_ORDER:
@@ -104,6 +105,11 @@ def get_allowed_tools(read_only: bool, git_allowed: bool, yolo_enabled: bool) ->
         if tool == "bash" and not yolo_enabled:
             continue
         allowed.append(tool)
+    if plugins:
+        for plugin in plugins:
+            if read_only and plugin.is_destructive:
+                continue
+            allowed.append(plugin.name)
     return allowed
 
 
@@ -128,7 +134,7 @@ def iter_json_candidates(raw_text: str) -> List[str]:
 
 def parse_tool_calls(raw_text: str, allowed_tools: Optional[Sequence[str]] = None) -> List[ToolCall]:
     calls: List[ToolCall] = []
-    allowed = set(allowed_tools) if allowed_tools is not None else ALLOWED_TOOLS
+    allowed = set(allowed_tools) if allowed_tools is not None else BUILTIN_TOOLS
     for candidate in iter_json_candidates(raw_text):
         parsed = load_candidate(candidate)
         if not parsed:
@@ -141,7 +147,7 @@ def parse_tool_calls(raw_text: str, allowed_tools: Optional[Sequence[str]] = Non
             if not isinstance(obj, dict):
                 continue
             tool = str(obj.get("tool", "")).strip()
-            if tool not in ALLOWED_TOOLS:
+            if tool not in allowed:
                 continue
             target = str(obj.get("target", "") or "").strip()
             args = obj.get("args", "")
@@ -230,6 +236,7 @@ def run_tool(
     git_allowed: bool,
     yolo_enabled: bool,
     read_only: bool = False,
+    plugin_tools: Optional[Dict[str, PluginTool]] = None,
     task_manager: Optional[TaskListManager] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> str:
@@ -243,7 +250,9 @@ def run_tool(
             f"tool={tool} target={target!r} args={args!r} base={base} extra_roots={[str(r) for r in extra_roots]}",
     )
 
-    if tool not in ALLOWED_TOOLS:
+    plugins = plugin_tools or {}
+
+    if tool not in BUILTIN_TOOLS and tool not in plugins:
         return json_error(tool, f"unsupported tool '{tool}'")
 
     if read_only and tool in READ_ONLY_DISABLED_TOOLS:
@@ -255,6 +264,28 @@ def run_tool(
         if debug_logger:
             debug_logger.log("tool.error", f"tool={tool} target={target!r} path_escape_error={exc}")
         return json_error(tool, f"target path '{target}' escapes working directory")
+
+    if tool in plugins:
+        plugin = plugins[tool]
+        if read_only and plugin.is_destructive:
+            return json_error(tool, f"tool '{tool}' is disabled in read-only mode")
+        try:
+            result = plugin.handler(
+                target,
+                args,
+                base,
+                extra_roots,
+                skill_roots,
+                task_manager,
+                debug_logger,
+            )
+            if not isinstance(result, str):
+                return json_error(tool, "plugin handlers must return a JSON string")
+            return result
+        except Exception as exc:
+            if debug_logger:
+                debug_logger.log("plugin.error", f"tool={tool} path={plugin.path} error={exc}")
+            return json_error(tool, f"plugin '{tool}' failed: {exc}")
 
     if tool == "read":
         if not target_path.exists():

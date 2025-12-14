@@ -10,6 +10,7 @@ from .context import build_system_message, gather_context
 from .llm import LLMClient
 from .task_list import TaskListManager
 from .tools import ToolCall, get_allowed_tools, parse_tool_calls, run_tool, summarize_output
+from .plugins import PluginTool, discover_plugins
 
 COLOR_BLUE = "\033[94m"
 COLOR_GREEN = "\033[92m"
@@ -30,6 +31,7 @@ def run_agent_turn(
     yolo_enabled: bool,
     read_only: bool,
     allowed_tools: Sequence[str],
+    plugin_tools: Dict[str, PluginTool],
     task_manager: TaskListManager,
     debug_logger: Optional[DebugLogger] = None,
 ) -> None:
@@ -86,6 +88,7 @@ def run_agent_turn(
             git_allowed,
             yolo_enabled,
             read_only=read_only,
+            plugin_tools=plugin_tools,
             task_manager=task_manager,
             debug_logger=debug_logger,
         )
@@ -132,6 +135,7 @@ def run_loop(
     silent_tools: bool,
     yolo_enabled: bool,
     read_only: bool,
+    plugin_dirs: Optional[Sequence[Path]] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> None:
     task_manager = TaskListManager()
@@ -151,9 +155,12 @@ def run_loop(
         extra_roots.append(resolved_user_skills)
         skill_roots.append(resolved_user_skills)
 
-    allowed_tools = get_allowed_tools(read_only=read_only, git_allowed=git_allowed, yolo_enabled=yolo_enabled)
+    plugins = discover_plugins(plugin_dirs or [], base, debug_logger=debug_logger)
+    if debug_logger and plugins:
+        debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
+    allowed_tools = get_allowed_tools(read_only=read_only, git_allowed=git_allowed, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))
     initial_task_list_text = task_manager.render_tasks()
-    messages: List[Dict[str, str]] = [build_system_message(base, git_allowed, yolo_enabled, notes, initial_task_list=initial_task_list_text, read_only=read_only, allowed_tools=allowed_tools)]
+    messages: List[Dict[str, str]] = [build_system_message(base, git_allowed, yolo_enabled, notes, initial_task_list=initial_task_list_text, read_only=read_only, allowed_tools=allowed_tools, plugins=list(plugins.values()))]
     user_input = initial_prompt
     turn = 1
 
@@ -199,6 +206,7 @@ def run_loop(
             yolo_enabled=yolo_enabled,
             read_only=read_only,
             allowed_tools=allowed_tools,
+            plugin_tools=plugins,
             task_manager=task_manager,
             debug_logger=debug_logger,
         )

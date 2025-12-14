@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 from .debug_log import DebugLogger
 from .plugins import PluginTool
@@ -160,14 +160,14 @@ def extract_braced_objects(raw_text: str) -> List[str]:
     return objs
 
 
-def load_candidate(text: str) -> Optional[Dict[str, Any]]:
+def load_candidate(text: str) -> Optional[Union[Dict[str, Any], List[Any]]]:
     cleaned = text.strip()
     if not cleaned:
         return None
     for loader in (json.loads, ast.literal_eval):
         try:
             obj = loader(cleaned)
-            if isinstance(obj, dict):
+            if isinstance(obj, (dict, list)):
                 return obj
         except Exception:
             continue

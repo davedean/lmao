@@ -20,6 +20,13 @@ class SkillGuardsTests(TestCase):
         self.assertIsNotNone(error)
         self.assertIn("skills/<skill-name>", error)
 
+    def test_blocks_top_level_skill_file_without_extension(self) -> None:
+        skill_root = self.tmpdir / "skills"
+        target = skill_root / "loose"
+        error = validate_skill_write_target(target, [skill_root])
+        self.assertIsNotNone(error)
+        self.assertIn("skills/<skill-name>", error)
+
     def test_allows_nested_skill_file(self) -> None:
         skill_root = self.tmpdir / "skills"
         target = skill_root / "demo" / "SKILL.md"

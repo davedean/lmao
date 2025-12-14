@@ -11,7 +11,12 @@ PLUGIN = {
     "description": "Echoes the provided target/args payload for demo purposes.",
     "api_version": PLUGIN_API_VERSION,
     "is_destructive": False,
+    "allow_in_read_only": True,
+    "allow_in_normal": True,
+    "allow_in_yolo": True,
+    "always_confirm": False,
     "input_schema": "string payload",
+    "usage": "{'tool':'echo_plugin','target':'hello','args':'world'}",
 }
 
 

@@ -70,6 +70,17 @@ class ToolSafetyTests(TestCase):
         self.assertFalse(payload["success"])
         self.assertIn("skills/<skill-name>", payload["error"])
 
+    def test_move_blocks_top_level_skill_file(self) -> None:
+        skills_root = self.base / "skills"
+        skills_root.mkdir()
+        source = self.base / "notes.txt"
+        source.write_text("demo", encoding="utf-8")
+        call = ToolCall(tool="move", target="notes.txt", args="skills/loose")
+        result = run_tool(call, base=self.base, extra_roots=[], skill_roots=[skills_root], yolo_enabled=False, plugin_tools=self.plugins)
+        payload = json.loads(result)
+        self.assertFalse(payload["success"])
+        self.assertIn("skills/<skill-name>", payload["error"])
+
     def test_list_skills_includes_user_and_repo(self) -> None:
         repo_skill = self.base / "skills" / "demo"
         repo_skill.mkdir(parents=True)

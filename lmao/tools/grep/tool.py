@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -9,7 +10,7 @@ from lmao.plugin_helpers import normalize_path_for_output, safe_target_path
 
 PLUGIN = {
     "name": "grep",
-    "description": "Search for a substring in files (skips dotfiles, truncates after 200 matches).",
+    "description": "Search for a substring in files (skips dot-directories/files, truncates after 200 matches).",
     "api_version": PLUGIN_API_VERSION,
     "is_destructive": False,
     "allow_in_read_only": True,
@@ -19,6 +20,8 @@ PLUGIN = {
     "input_schema": "target file/dir; args is pattern string",
     "usage": "{'tool':'grep','target':'./path','args':'substring'}",
 }
+
+MAX_FILE_BYTES = 2_000_000
 
 
 def _success(data: dict) -> str:
@@ -47,14 +50,26 @@ def run(
     if not target_path.exists():
         return _error(f"path '{target}' not found")
 
+    candidates: list[Path] = []
     if target_path.is_dir():
-        candidates = [p for p in target_path.rglob("*") if p.is_file() and not p.name.startswith(".")]
+        for root, dirs, files in os.walk(target_path):
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            for name in files:
+                if name.startswith("."):
+                    continue
+                candidates.append(Path(root) / name)
     else:
-        candidates = [target_path]
+        if not target_path.name.startswith("."):
+            candidates = [target_path]
 
     matches = []
     truncated = False
     for candidate in candidates:
+        try:
+            if candidate.stat().st_size > MAX_FILE_BYTES:
+                continue
+        except Exception:
+            continue
         try:
             content = candidate.read_text(encoding="utf-8")
         except Exception:

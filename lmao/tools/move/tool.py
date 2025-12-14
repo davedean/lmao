@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
-from lmao.plugin_helpers import normalize_path_for_output, safe_target_path
+from lmao.plugin_helpers import normalize_path_for_output, safe_target_path, validate_skill_write_target
 
 PLUGIN = {
     "name": "move",
@@ -50,6 +50,10 @@ def run(
     try:
         if not source_path.exists():
             return _error(f"source '{target}' not found")
+        if source_path.is_file():
+            skill_error = validate_skill_write_target(dest_path, skill_roots)
+            if skill_error:
+                return _error(skill_error)
         if dest_path.exists():
             return _error(f"destination '{args}' already exists")
         dest_path.parent.mkdir(parents=True, exist_ok=True)

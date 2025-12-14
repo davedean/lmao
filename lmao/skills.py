@@ -23,7 +23,7 @@ def is_under_skill_root(path: Path, skill_roots: Sequence[Path]) -> bool:
 
 def validate_skill_write_target(target_path: Path, skill_roots: Sequence[Path]) -> Optional[str]:
     """
-    Block writes that drop files directly under a skill root (e.g., skills/foo.md).
+    Block writes that drop files directly under a skill root (e.g., skills/foo or skills/foo.md).
     Skill files should live inside a named skill folder, e.g., skills/demo/SKILL.md.
     """
     for root in skill_roots:
@@ -31,7 +31,7 @@ def validate_skill_write_target(target_path: Path, skill_roots: Sequence[Path]) 
             target_path.relative_to(root)
         except Exception:
             continue
-        if target_path.parent == root and target_path.suffix:
+        if target_path.parent == root:
             return SKILL_WRITE_ERROR
     return None
 

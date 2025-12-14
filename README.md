@@ -24,7 +24,7 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 - Default tools: `read`, `write`, `mkdir`, `move`, `ls`, `find`, `grep`, `list_skills`, plus task-list helpers (`add_task`, `complete_task`, `delete_task`, `list_tasks`). Git tools (`git_add`, `git_commit`) are available only with `--allow-git`. Tool outputs are JSON (`success` + `data`/`error`) to keep paths with spaces unambiguous.
 - Optional tool: `bash` is disabled by default; enable with `--yolo` and each command will ask for interactive confirmation.
 - Read-only mode: pass `--read-only` to disable destructive tools (`write`, `mkdir`, `move`, `git_add`, `git_commit`, `bash`) for inspection-only runs.
-- Pluggable tools: load custom tools from a directory with `--plugins-dir ./skills/demo-plugin` (repeatable). Plugin modules expose a `PLUGIN` manifest and `run` function; see `skills/demo-plugin/tool.py` for a minimal echo example.
+- Pluggable tools: load custom tools from a directory with `--plugins-dir ./tools/demo-plugin` (repeatable). Plugin modules expose a `PLUGIN` manifest and `run` function; see `tools/demo-plugin/tool.py` for a minimal echo example.
 - Path safety: all tool paths are constrained to the working directory. User skill folders under `~/.config/agents/skills` are also allowed when present.
 - Task lists: each run starts with an active list (seeded with “create a plan to respond”). The agent is expected to keep the list in sync while it works instead of pausing for confirmation.
 
@@ -34,9 +34,10 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 
 ## Plugin Tools
 - Use `--plugins-dir <path>` (repeatable) to load plugin tool modules under that directory; only paths inside the working directory are loaded. Each plugin file should be named `tool.py`.
+- Convention: keep plugins under `./tools/<plugin-name>/tool.py` to avoid mixing with skills.
 - Manifest shape: `PLUGIN = {"name": "my_tool", "description": "...", "api_version": PLUGIN_API_VERSION, "is_destructive": bool, "input_schema": "<freeform>"}` plus a callable `run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None) -> str` that returns the usual JSON payload.
 - Gating: destructive plugins are hidden in `--read-only` mode; they run normally otherwise. They must not escape the working directory; use `safe_target_path` if you manipulate paths.
-- Example plugin: `skills/demo-plugin/tool.py` echoes the incoming target/args to demonstrate the API.
+- Example plugin: `tools/demo-plugin/tool.py` echoes the incoming target/args to demonstrate the API.
 
 ## CLI Flags (excerpt)
 - Core: `--endpoint`, `--model`, `--temperature`, `--top-p`, `--max-tokens`, `--workdir`

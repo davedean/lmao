@@ -52,6 +52,10 @@ Always check that all tasks on the task list are complete before responding to t
 
 - Always validate your beliefs with tools where possible, before responding to the user. For example, if you believe a folder does not exist or is empty, you should find/list it first to confirm. Once you've validated the facts you can repond to the user with more clarity.
 
+Skills and general Q&A:
+- Skills: when asked to use a skill, (1) call list_skills if you have not already to see available skills; (2) read the skill's SKILL.md using its folder path from list_skills; (3) apply the instructions/examples to produce the requested output. If you cannot apply the skill after reading SKILL.md, ask one concise clarifying question.
+- General questions (stories, planning, “which tools are available?”) should be answered directly without calling tools. Do NOT enumerate or read skills at session start unless the user asks about skills or to use a specific skill. When asked which tools are available, answer from the tool list without running tools.
+
   """
 
 
@@ -68,14 +72,11 @@ def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_onl
     examples_block = "\n".join(example_lines) if example_lines else "(no tool examples provided by plugins)"
 
     prompt = (
-        "You are a local file-editing agent. Act autonomously: plan and use tools as needed until the user's request is completed. Do not wait for permission to run tools.\n"
-        f"Available tools (including plugins): {tool_list}. Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces). Skills are separate: each lives under ./skills/<name>/ with a SKILL.md; user-specific skills may also live under ~/.config/agents/skills/<name>/SKILL.md. Do NOT use list_skills to search for tools—tools are only the ones listed here. To list skills, use the list_skills tool; AGENTS.md is not a skill registry.\n"
-        "Task lists: a task list is always available. Immediately add tasks for the planned steps (at least \"create a plan to respond\"). Tasks should be single-line, concise, and unnumbered; IDs are assigned automatically and stored in the list. Before running tools each turn, sync the list (add/complete/delete). After updating the list, keep working—do not pause for confirmation. Before replying, check the list: if tasks remain and you are not blocked, keep working instead of replying. If blocked/awaiting user, give a brief status + ask. Use list_tasks only when you need to show the list; avoid spamming. For task tools, put the content in 'args' (leave 'target' empty); if you accidentally put data in 'target', it will be treated as the payload.\n"
-        "Skills: when asked to use a skill, (1) call list_skills if you have not already to see available skills; (2) read the skill's SKILL.md using its folder path from list_skills (e.g., /path/to/skills/foo/SKILL.md); (3) apply the instructions/examples to produce the requested output. If you cannot apply the skill after reading SKILL.md, ask one concise clarifying question.\n"
-        "General questions (stories, planning, “which tools are available?”) should be answered directly without calling tools. Do NOT enumerate or read skills at session start unless the user asks about skills or to use a specific skill. When asked which tools are available, answer from the tool list above and do NOT call tools. Bash always asks for confirmation per command; use it only when necessary.\n"
-        "When you need to use tools, respond ONLY with a JSON object (no surrounding text). Use one of:\n"
+        f"Available tools (including plugins): {tool_list}.\n"
+        "Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces).\n"
+        "When you need to use a tool, respond ONLY with a single JSON object (no surrounding text) shaped like:\n"
         f"{examples_block}\n"
-        "Rules: paths are relative to the working directory; do not escape with .. or absolute paths. Quote paths with spaces when issuing tools. Issue one tool call at a time (multiple tool JSON blocks will only run the first). After a tool call, immediately continue: if more tools are needed, call them; otherwise reply directly to the user. Do not stay silent or return empty replies. The user cannot see tool output. Keep outputs concise. If asked about available tools, answer directly from the list above."
+        "Paths are relative to the working directory; do not escape with .. or absolute paths. Quote paths with spaces. Issue one tool call at a time; only the first JSON block will run. Do not stay silent or return empty replies. If asked about available tools, answer from the list above without running tools."
     )
 
     if read_only:

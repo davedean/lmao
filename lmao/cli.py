@@ -31,7 +31,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-p", type=float, default=None, help="Nucleus sampling top_p")
     parser.add_argument("--max-tokens", type=int, default=None, help="Max tokens for responses")
     parser.add_argument("--workdir", default=None, help="Working directory for tools (default: current working directory)")
-    parser.add_argument("--allow-git", action="store_true", help="Enable git add/commit tools (disabled by default)")
     parser.add_argument("--max-tool-lines", type=int, default=8, help="Max lines to show from tool output in console summaries (0 for none)")
     parser.add_argument("--max-tool-chars", type=int, default=400, help="Max chars to show from tool output in console summaries (0 for none)")
     parser.add_argument("--max-turns", type=int, default=None, help="Maximum conversation turns before stopping")
@@ -39,7 +38,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--prompt-file", type=str, default=None, help="Read initial prompt from file")
     parser.add_argument("--yolo", action="store_true", help="Enable unsafe 'bash' tool with per-command confirmation (off by default)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log in the working directory")
-    parser.add_argument("--read-only", action="store_true", help="Disable destructive tools (writes/moves/git/bash); for inspection-only sessions")
+    parser.add_argument("--read-only", action="store_true", help="Disable destructive tools and any plugin that disallows read-only; for inspection-only sessions")
     return parser
 
 
@@ -70,7 +69,6 @@ def main() -> None:
             initial_prompt=initial_prompt,
             client=client,
             workdir=base_dir,
-            git_allowed=args.allow_git,
             max_tool_output=(args.max_tool_lines, args.max_tool_chars),
             max_turns=args.max_turns,
             silent_tools=args.silent_tools,

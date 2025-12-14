@@ -36,9 +36,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-turns", type=int, default=None, help="Maximum conversation turns before stopping")
     parser.add_argument("--silent-tools", action="store_true", help="Do not print tool outputs to console (still sent to model)")
     parser.add_argument("--prompt-file", type=str, default=None, help="Read initial prompt from file")
-    parser.add_argument("--yolo", action="store_true", help="Enable unsafe 'bash' tool with per-command confirmation (off by default)")
+    parser.add_argument("--mode", choices=["normal", "yolo", "ro", "readonly", "read-only"], default="normal", help="Safety mode: read-only disables destructive tools/plugins; yolo enables risky plugins; default: normal")
+    parser.add_argument("--yolo", action="store_true", help="Legacy: enable unsafe 'bash' tool with per-command confirmation (use --mode yolo instead)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log in the working directory")
-    parser.add_argument("--read-only", action="store_true", help="Disable destructive tools and any plugin that disallows read-only; for inspection-only sessions")
+    parser.add_argument("--read-only", action="store_true", help="Legacy: disable destructive tools and plugins that disallow read-only (use --mode readonly instead)")
     return parser
 
 
@@ -53,6 +54,17 @@ def main() -> None:
         if args.prompt_file:
             debug_logger.log("prompt.file", f"path={Path(args.prompt_file).expanduser().resolve()}")
     initial_prompt = read_prompt(args)
+
+    mode = (args.mode or "normal").lower()
+    mode_read_only = mode in ("ro", "readonly", "read-only")
+    mode_yolo = mode == "yolo"
+    if mode != "normal" and (args.read_only or args.yolo):
+        parser.error("Use --mode without --read-only/--yolo; the new flag replaces the legacy ones.")
+    read_only = mode_read_only or (mode == "normal" and args.read_only)
+    yolo_enabled = mode_yolo or (mode == "normal" and args.yolo)
+    if read_only and yolo_enabled:
+        parser.error("Cannot enable both read-only and yolo modes.")
+
     client = LLMClient(
         endpoint=args.endpoint,
         model=args.model,
@@ -72,8 +84,8 @@ def main() -> None:
             max_tool_output=(args.max_tool_lines, args.max_tool_chars),
             max_turns=args.max_turns,
             silent_tools=args.silent_tools,
-            yolo_enabled=args.yolo,
-            read_only=args.read_only,
+            yolo_enabled=yolo_enabled,
+            read_only=read_only,
             plugin_dirs=[built_in_plugins_dir],
             debug_logger=debug_logger,
         )

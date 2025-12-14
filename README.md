@@ -21,9 +21,9 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
   ```
 
 ## Behavior & Tools
-- Default tools: `read`, `write`, `mkdir`, `move`, `ls`, `find`, `grep`, `list_skills`, plus task-list helpers (`add_task`, `complete_task`, `delete_task`, `list_tasks`). Git tools (`git_add`, `git_commit`) ship as plugins under `lmao/tools/git-*` and are available in normal/yolo modes (blocked in `--read-only`). Tool outputs are JSON (`success` + `data`/`error`) to keep paths with spaces unambiguous.
-- Optional tool: `bash` ships as a plugin and prompts for confirmation on every command; it is available unless `--read-only` is set.
-- Read-only mode: pass `--read-only` to disable destructive tools (`write`, `mkdir`, `move`) and any plugin that opts out of read-only (git/bash by default) for inspection-only runs.
+- Default tools: `read`, `write`, `mkdir`, `move`, `ls`, `find`, `grep`, `list_skills`, plus task-list helpers (`add_task`, `complete_task`, `delete_task`, `list_tasks`). Git tools (`git_add`, `git_commit`) ship as plugins under `lmao/tools/git-*` and are available in normal/yolo modes (blocked in `--mode readonly`). Tool outputs are JSON (`success` + `data`/`error`) to keep paths with spaces unambiguous.
+- Optional tool: `bash` ships as a plugin and prompts for confirmation on every command; it is available unless read-only mode is set.
+- Read-only mode: pass `--mode readonly` (or legacy `--read-only`) to disable destructive tools (`write`, `mkdir`, `move`) and any plugin that opts out of read-only (git/bash by default) for inspection-only runs.
 - Pluggable tools: shipped plugins under `lmao/tools` are loaded automatically (see `lmao/tools/demo-plugin/tool.py` for a minimal echo example). Additional plugin directories are not yet supported via CLI.
 - Path safety: all tool paths are constrained to the working directory. User skill folders under `~/.config/agents/skills` are also allowed when present.
 - Task lists: each run starts with an active list (seeded with “create a plan to respond”). The agent is expected to keep the list in sync while it works instead of pausing for confirmation.
@@ -41,7 +41,7 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 
 ## CLI Flags (excerpt)
 - Core: `--endpoint`, `--model`, `--temperature`, `--top-p`, `--max-tokens`, `--workdir`
-- Safety: `--yolo` (opt into risky flows/plugins), `--read-only` (disable writes/moves/git/bash and plugins that opt out of read-only)
+- Safety: `--mode yolo` (opt into risky flows/plugins) or `--mode readonly` (disable writes/moves/git/bash and plugins that opt out of read-only); legacy `--yolo`/`--read-only` remain for compatibility
 - Extensibility: user-specified plugin directories are planned but not yet supported; current runs load plugins from `./tools`.
 - Loop control: `--max-turns`, `--silent-tools`, `--max-tool-lines`, `--max-tool-chars`
 - Prompting: `--prompt-file` (seed long prompts), optional interactive prompt when the positional prompt is omitted

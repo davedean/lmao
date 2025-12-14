@@ -156,6 +156,8 @@ def run_loop(
     if debug_logger and plugins:
         debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
     allowed_tools = get_allowed_tools(read_only=read_only, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))
+    mode_label = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
+    user_prompt = f"{COLOR_GREEN}You [mode: {mode_label}]:{COLOR_RESET} "
     initial_task_list_text = task_manager.render_tasks()
     messages: List[Dict[str, str]] = [build_system_message(base, yolo_enabled, notes, initial_task_list=initial_task_list_text, read_only=read_only, allowed_tools=allowed_tools, plugins=list(plugins.values()))]
     user_input = initial_prompt
@@ -166,7 +168,7 @@ def run_loop(
 
     if user_input is None:
         try:
-            user_input = input(f"{COLOR_GREEN}You:{COLOR_RESET} ").strip()
+            user_input = input(user_prompt).strip()
         except EOFError:
             return
         if debug_logger:
@@ -180,7 +182,7 @@ def run_loop(
             return
         if not user_input:
             try:
-                user_input = input(f"{COLOR_GREEN}You:{COLOR_RESET} ").strip()
+                user_input = input(user_prompt).strip()
             except EOFError:
                 return
             if debug_logger:
@@ -209,7 +211,7 @@ def run_loop(
         turn += 1
 
         try:
-            user_input = input(f"{COLOR_GREEN}You:{COLOR_RESET} ").strip()
+            user_input = input(user_prompt).strip()
         except EOFError:
             return
         if debug_logger and user_input is not None:

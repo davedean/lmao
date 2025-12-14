@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Tuple
-
-from lmao.debug_log import DebugLogger
 from lmao.plugins import PLUGIN_API_VERSION
 
 PLUGIN = {
@@ -54,7 +52,7 @@ def run(
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
-    debug_logger: Optional[DebugLogger] = None,
+    debug_logger: Optional[object] = None,
 ) -> str:
     skills = _list_skill_info(skill_roots)
     data = [{"name": name, "path": str(path)} for name, path in skills]

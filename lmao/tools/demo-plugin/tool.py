@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
-from lmao.debug_log import DebugLogger
 
 PLUGIN = {
     "name": "echo_plugin",
@@ -23,7 +22,7 @@ def run(
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
-    debug_logger: Optional[DebugLogger] = None,
+    debug_logger: Optional[object] = None,
 ) -> str:
     """Echo plugin: returns the inputs to show plugin plumbing works."""
     payload = {"tool": PLUGIN["name"], "success": True, "data": {"target": target, "args": args}}

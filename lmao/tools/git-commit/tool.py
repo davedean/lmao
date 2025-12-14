@@ -5,9 +5,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Sequence
 
-from lmao.context import find_repo_root
-from lmao.debug_log import DebugLogger
 from lmao.plugins import PLUGIN_API_VERSION
+from lmao.plugin_helpers import find_repo_root
 
 PLUGIN = {
     "name": "git_commit",
@@ -18,6 +17,7 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "input_schema": "commit message in args",
+    "usage": "{'tool':'git_commit','target':'','args':'commit message'}",
 }
 
 
@@ -36,7 +36,7 @@ def run(
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
-    debug_logger: Optional[DebugLogger] = None,
+    debug_logger: Optional[object] = None,
 ) -> str:
     repo_root = find_repo_root(base)
     if not (repo_root / ".git").exists():

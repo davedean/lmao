@@ -3,8 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Optional, Sequence
-
-from lmao.debug_log import DebugLogger
 from lmao.plugins import PLUGIN_API_VERSION
 
 PLUGIN = {
@@ -17,6 +15,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "task id in args (or target)",
+    "usage": "{'tool':'delete_task','target':'','args':'task id'}",
 }
 
 
@@ -35,7 +34,7 @@ def run(
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
-    debug_logger: Optional[DebugLogger] = None,
+    debug_logger: Optional[object] = None,
 ) -> str:
     if task_manager is None:
         return _error("task list manager unavailable")

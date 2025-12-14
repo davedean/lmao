@@ -4,9 +4,8 @@ import json
 from pathlib import Path
 from typing import Optional, Sequence
 
-from lmao.debug_log import DebugLogger
 from lmao.plugins import PLUGIN_API_VERSION
-from lmao.tools import normalize_path_for_output, safe_target_path
+from lmao.plugin_helpers import normalize_path_for_output, safe_target_path
 
 PLUGIN = {
     "name": "grep",
@@ -18,6 +17,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "target file/dir; args is pattern string",
+    "usage": "{'tool':'grep','target':'./path','args':'substring'}",
 }
 
 
@@ -36,7 +36,7 @@ def run(
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
-    debug_logger: Optional[DebugLogger] = None,
+    debug_logger: Optional[object] = None,
 ) -> str:
     pattern = str(args)
     try:

@@ -12,6 +12,7 @@ Built-in plugins live under `lmao/tools/<plugin-name>/tool.py` and are auto-load
   - `allow_in_yolo` (bool; defaults to `True`; yolo mode also enables plugins allowed in normal)
   - `always_confirm` (bool; defaults to `False`; when true, the user must approve each run)
   - `input_schema` (optional string description)
+  - `usage` (optional string or list of example tool JSON payloads used in the system prompt)
 - `run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None) -> str` that returns a JSON string with `{"tool": name, "success": bool, "data"|"error": ...}`.
 
 Mode gating:
@@ -24,6 +25,7 @@ Safety tips:
 - Keep paths inside allowed roots; reuse `safe_target_path(target, base, extra_roots)` if you touch the filesystem.
 - Long-running or risky plugins should ask for confirmation themselves (similar to the bash tool).
 - Destructive plugins should usually set `allow_in_read_only=False`.
+- Shared helpers: import from `lmao.plugin_helpers` to avoid reimplementing sandbox checks and text parsing, e.g., `from lmao.plugin_helpers import safe_target_path, normalize_path_for_output, parse_line_range, validate_skill_write_target, find_repo_root, normalize_task_text`.
 
 Examples:
 - Core plugins: file ops (read/write/mkdir/move/ls/find/grep), task tools, git add/commit, and bash all live under `lmao/tools/*`.

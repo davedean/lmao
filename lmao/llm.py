@@ -85,7 +85,7 @@ class LLMClient:
 
         start = time.perf_counter()
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=600) as resp:
                 raw_body = resp.read()
         except urllib.error.HTTPError as exc:  # pragma: no cover - network error
             detail = exc.read().decode("utf-8", errors="ignore")

@@ -65,23 +65,25 @@ SKILL_USAGE_PROMPT = """Skills live under ./skills/<name>/SKILL.md and may also 
 def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_only: bool, plugins: Optional[Sequence[PluginTool]] = None) -> str:
     resolved = list(allowed_tools) if allowed_tools else list(DEFAULT_ALLOWED_TOOLS)
     tool_list = ", ".join(resolved) if resolved else "(no tools discovered)"
-    example_lines: list[str] = []
-    if plugins:
-        plugin_map = {plugin.name: plugin for plugin in plugins}
-        for name in resolved:
-            if name == "list_skills":
-                continue  # avoid prompting the model to call this unless explicitly asked
-            plugin = plugin_map.get(name)
-            if plugin and plugin.usage_examples:
-                example_lines.extend(plugin.usage_examples)
-    examples_block = "\n".join(example_lines) if example_lines else "(no tool examples provided by plugins)"
+    examples_block = "\n".join(
+        [
+            '{"type":"assistant_turn","version":"1","steps":[{"type":"message","format":"markdown","content":"...user-visible response..."},{"type":"end","reason":"completed"}]}',
+            '{"type":"assistant_turn","version":"1","steps":[{"type":"tool_call","call":{"tool":"read","target":"README.md","args":"lines:1-40"}}]}',
+            '{"type":"assistant_turn","version":"1","steps":[{"type":"think","content":"Short internal note..."},{"type":"tool_call","call":{"tool":"list_tasks","target":"","args":""}}]}',
+        ]
+    )
 
     prompt_lines = [
         f"Available tools (including plugins): {tool_list}.",
         "Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces).",
-        "When you need to use a tool, respond ONLY with a single JSON object (no surrounding text) shaped like:",
+        "You MUST respond with a single JSON object and nothing else (no code fences, no surrounding text).",
+        "Required schema: {'type':'assistant_turn','version':'1','steps':[...]}",
+        "Supported step types: think, tool_call, message, end.",
+        "Tool calls must be emitted as a tool_call step with call={tool,target,args}. Only ONE tool_call step is allowed per reply.",
+        "Use end when you believe the user request is complete (the loop may block end if the task list is not complete).",
+        "Examples (copy the shape exactly):",
         f"{examples_block}",
-        "Paths are relative to the working directory; do not escape with .. or absolute paths. Quote paths with spaces. Issue one tool call at a time; only the first JSON block will run. Do not stay silent or return empty replies.",
+        "Paths are relative to the working directory; do not escape with .. or absolute paths. Quote paths with spaces. Do not stay silent or return empty replies.",
         "If asked about available tools, answer directly from the list above without running any tool. Skills are already listed below—do not call list_skills unless the user asks about skills or you suspect the list changed and the user wants an update.",
         "Calling list_skills to answer tool questions is forbidden; reply directly instead.",
     ]

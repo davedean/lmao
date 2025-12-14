@@ -1,22 +1,20 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-import json
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
 from .llm import LLMCallStats, LLMClient
+from .protocol import ProtocolError, collect_steps, find_first_tool_call, parse_assistant_turn
 from .task_list import TaskListManager
-from .tools import ToolCall, get_allowed_tools, parse_tool_calls, run_tool, summarize_output
+from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
 
 COLOR_BLUE = "\033[94m"
 COLOR_GREEN = "\033[92m"
 COLOR_DIM = "\033[2m"
 COLOR_RESET = "\033[0m"
-
 
 def run_agent_turn(
     messages: List[Dict[str, str]],
@@ -34,12 +32,13 @@ def run_agent_turn(
     task_manager: TaskListManager,
     show_stats: bool,
     debug_logger: Optional[DebugLogger] = None,
-) -> Tuple[int, Optional[LLMCallStats]]:
+) -> Tuple[int, Optional[LLMCallStats], bool]:
     """Run one model turn, executing tools until the model stops requesting them."""
     empty_replies = 0
     last_tool_summary: Optional[str] = None
     last_stats: Optional[LLMCallStats] = None
     current_turn = turn
+    invalid_replies = 0
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
@@ -71,74 +70,131 @@ def run_agent_turn(
                 )
                 print(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{assistant_reply}\n")
                 messages.append({"role": "assistant", "content": assistant_reply})
-                return current_turn + 1, last_stats
+                return current_turn + 1, last_stats, False
             messages.append({"role": "system", "content": f"Your last reply was empty. The user asked: {last_user!r}. Continue the conversation now using the latest tool results and reply to the user."})
+            current_turn += 1
             continue
 
+        empty_replies = 0
         if debug_logger:
             debug_logger.log("assistant.reply", f"turn={current_turn} content={assistant_reply}")
-        empty_replies = 0
-        tool_calls = parse_tool_calls(assistant_reply, allowed_tools=allowed_tools)
-        tool_call = tool_calls[0] if tool_calls else None
-        is_tool_phase = tool_call is not None
-        label_color = COLOR_BLUE
-        reply_body = indent(assistant_reply) if is_tool_phase else assistant_reply
-        body_color_start = COLOR_DIM if is_tool_phase else ""
-        body_color_end = COLOR_RESET if is_tool_phase else ""
 
-        print(f"\n{label_color}[assistant #{current_turn}]{COLOR_RESET}\n{body_color_start}{reply_body}{body_color_end}\n")
+        try:
+            turn_obj = parse_assistant_turn(assistant_reply, allowed_tools=allowed_tools)
+        except ProtocolError as exc:
+            invalid_replies += 1
+            if debug_logger:
+                print(f"{COLOR_DIM}[protocol] invalid: {exc} (retry {invalid_replies}/2){COLOR_RESET}")
+            if invalid_replies > 2:
+                message = (
+                    "error: model repeatedly returned invalid JSON protocol output.\n"
+                    f"last error: {exc}\n"
+                    "last reply (verbatim):\n"
+                    f"{assistant_reply}"
+                )
+                print(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{message}\n")
+                messages.append({"role": "assistant", "content": assistant_reply})
+                return current_turn + 1, last_stats, False
+
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "Your reply was not valid for the required JSON assistant protocol.\n"
+                        f"Error: {exc}\n"
+                        "Return ONLY a single JSON object matching:\n"
+                        '{"type":"assistant_turn","version":"1","steps":[...]}\n'
+                        "No code fences, no extra text. Retry now."
+                    ),
+                }
+            )
+            current_turn += 1
+            continue
+
+        label_color = COLOR_BLUE
+        thinks, user_messages, has_end = collect_steps(turn_obj.steps)
+        tool_call_payload = find_first_tool_call(turn_obj.steps)
+
+        if debug_logger:
+            step_summary = ",".join(step.type for step in turn_obj.steps) if turn_obj.steps else "(no steps)"
+            print(f"{COLOR_DIM}[protocol] ok steps={step_summary}{COLOR_RESET}")
+
+        print(f"\n{label_color}[assistant #{current_turn}]{COLOR_RESET}")
+        if debug_logger and thinks:
+            for step in thinks:
+                print(f"{COLOR_DIM}{step.content}{COLOR_RESET}")
+        if user_messages:
+            combined = "\n\n".join(step.content for step in user_messages)
+            print(f"{combined}\n")
+        elif tool_call_payload is not None:
+            print(f"{COLOR_DIM}(requesting tool: {tool_call_payload.tool}){COLOR_RESET}\n")
+        else:
+            print()
+
+        # Preserve protocol conversation history for the model by storing the JSON turn verbatim.
         messages.append({"role": "assistant", "content": assistant_reply})
 
-        if not tool_call:
-            return current_turn + 1, last_stats
-
-        if debug_logger:
-            debug_logger.log(
-                "tool.call",
-                f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r}",
+        if tool_call_payload is not None:
+            tool_call = ToolCall(tool=tool_call_payload.tool, target=tool_call_payload.target, args=tool_call_payload.args)
+            if debug_logger:
+                debug_logger.log(
+                    "tool.call",
+                    f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r}",
+                )
+            output = run_tool(
+                tool_call,
+                base,
+                extra_roots,
+                skill_roots,
+                yolo_enabled,
+                read_only=read_only,
+                plugin_tools=plugin_tools,
+                task_manager=task_manager,
+                debug_logger=debug_logger,
             )
-        output = run_tool(
-            tool_call,
-            base,
-            extra_roots,
-            skill_roots,
-            yolo_enabled,
-            read_only=read_only,
-            plugin_tools=plugin_tools,
-            task_manager=task_manager,
-            debug_logger=debug_logger,
-        )
-        if len(tool_calls) > 1:
-            note = "multiple tool calls were detected; only the first was executed. Issue tools one at a time."
-            try:
-                parsed = json.loads(output)
-                if isinstance(parsed, dict):
-                    parsed["note"] = note
-                    output = json.dumps(parsed, ensure_ascii=False)
-                else:
-                    output = f"{output}\nNote: {note}"
-            except Exception:
-                output = f"{output}\nNote: {note}"
-        tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
-        last_tool_summary = summarize_output(output, max_lines=max_tool_output[0], max_chars=max_tool_output[1])
-        if max_tool_output[1] > 0:
-            tool_result_body = indent(f"[tool result] {tool_desc}\n{last_tool_summary}")
-            print(f"{COLOR_DIM}{tool_result_body}{COLOR_RESET}\n")
+            tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
+            last_tool_summary = summarize_output(output, max_lines=max_tool_output[0], max_chars=max_tool_output[1])
+            if max_tool_output[1] > 0:
+                tool_result_body = indent(f"[tool result] {tool_desc}\n{last_tool_summary}")
+                print(f"{COLOR_DIM}{tool_result_body}{COLOR_RESET}\n")
 
-        if debug_logger:
-            debug_logger.log(
-                "tool.output",
-                f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} output={output}",
+            if debug_logger:
+                debug_logger.log(
+                    "tool.output",
+                    f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} output={output}",
+                )
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        f"Tool result for {tool_desc}:\n{output}\n"
+                        f"Use this to continue helping the user (request: {last_user!r}). "
+                        "If another tool is needed, call it; otherwise reply to the user now."
+                    ),
+                }
             )
-        messages.append({
-            "role": "user",
-            "content": (
-                f"Tool result for {tool_desc}:\n{output}\n"
-                f"Use this to continue helping the user (request: {last_user!r}). "
-                "If another tool is needed, call it; otherwise reply to the user now."
-            ),
-        })
-        current_turn += 1
+            current_turn += 1
+            continue
+
+        if has_end:
+            remaining = [t for t in task_manager.tasks if not t.done]
+            if remaining:
+                rendered = task_manager.render_tasks()
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "You attempted to end the conversation, but the task list still has incomplete items.\n"
+                            "Use tool_call steps to complete/delete/add tasks until it is complete, then emit an end step.\n\n"
+                            f"Current task list:\n{rendered}"
+                        ),
+                    }
+                )
+                current_turn += 1
+                continue
+            return current_turn + 1, last_stats, True
+
+        return current_turn + 1, last_stats, False
 
 
 def run_loop(
@@ -224,7 +280,7 @@ def run_loop(
         messages.append({"role": "user", "content": user_input})
         if debug_logger:
             debug_logger.log("user.input", f"turn={turn} content={user_input}")
-        next_turn, last_prompt_stats = run_agent_turn(
+        next_turn, last_prompt_stats, ended = run_agent_turn(
             messages,
             client=client,
             turn=turn,
@@ -242,6 +298,8 @@ def run_loop(
             debug_logger=debug_logger,
         )
         turn = next_turn
+        if ended:
+            return
         user_prompt = format_user_prompt()
 
         try:

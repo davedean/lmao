@@ -26,7 +26,6 @@ def run_agent_turn(
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
-    git_allowed: bool,
     max_tool_output: Tuple[int, int],
     yolo_enabled: bool,
     read_only: bool,
@@ -85,7 +84,6 @@ def run_agent_turn(
             base,
             extra_roots,
             skill_roots,
-            git_allowed,
             yolo_enabled,
             read_only=read_only,
             plugin_tools=plugin_tools,
@@ -129,7 +127,6 @@ def run_loop(
     initial_prompt: Optional[str],
     client: LLMClient,
     workdir: Path,
-    git_allowed: bool,
     max_tool_output: Tuple[int, int],
     max_turns: Optional[int],
     silent_tools: bool,
@@ -142,7 +139,7 @@ def run_loop(
     base = workdir.resolve()
     if debug_logger:
         debug_logger.log("debug.enabled", f"writing debug logs to {debug_logger.path}")
-        debug_logger.log("context", f"workdir={base} git_allowed={git_allowed} yolo_enabled={yolo_enabled} read_only={read_only}")
+        debug_logger.log("context", f"workdir={base} yolo_enabled={yolo_enabled} read_only={read_only}")
 
     notes = gather_context(base)
     # Seed a default task list so the model starts with a plan step (task list always exists)
@@ -158,9 +155,9 @@ def run_loop(
     plugins = discover_plugins(plugin_dirs or [], base, debug_logger=debug_logger, allow_outside_base=True)
     if debug_logger and plugins:
         debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
-    allowed_tools = get_allowed_tools(read_only=read_only, git_allowed=git_allowed, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))
+    allowed_tools = get_allowed_tools(read_only=read_only, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))
     initial_task_list_text = task_manager.render_tasks()
-    messages: List[Dict[str, str]] = [build_system_message(base, git_allowed, yolo_enabled, notes, initial_task_list=initial_task_list_text, read_only=read_only, allowed_tools=allowed_tools, plugins=list(plugins.values()))]
+    messages: List[Dict[str, str]] = [build_system_message(base, yolo_enabled, notes, initial_task_list=initial_task_list_text, read_only=read_only, allowed_tools=allowed_tools, plugins=list(plugins.values()))]
     user_input = initial_prompt
     turn = 1
 
@@ -201,7 +198,6 @@ def run_loop(
             base=base,
             extra_roots=extra_roots,
             skill_roots=skill_roots,
-            git_allowed=git_allowed,
             max_tool_output=max_tool_output if not silent_tools else (0, 0),
             yolo_enabled=yolo_enabled,
             read_only=read_only,

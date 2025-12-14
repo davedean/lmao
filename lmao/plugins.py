@@ -18,6 +18,9 @@ class PluginTool:
     description: str
     input_schema: Optional[str]
     is_destructive: bool
+    allow_in_read_only: bool
+    allow_in_normal: bool
+    allow_in_yolo: bool
     handler: Callable[..., str]
     path: Path
 
@@ -42,6 +45,10 @@ def _validate_manifest(manifest: Dict[str, Any]) -> Optional[str]:
     input_schema = manifest.get("input_schema")
     if input_schema is not None and not isinstance(input_schema, str):
         return "input_schema must be a string when provided"
+    for key in ("allow_in_read_only", "allow_in_normal", "allow_in_yolo"):
+        value = manifest.get(key, None)
+        if value is not None and not isinstance(value, bool):
+            return f"{key} must be a boolean when provided"
     return None
 
 
@@ -85,11 +92,15 @@ def load_plugin(path: Path, base: Path, debug_logger: Optional[DebugLogger] = No
             debug_logger.log("plugin.invalid_manifest", f"path={resolved} error={error}")
         return None
     try:
+        is_destructive = bool(manifest.get("is_destructive", False))
         tool = PluginTool(
             name=str(manifest["name"]).strip(),
             description=str(manifest["description"]).strip(),
             input_schema=str(manifest["input_schema"]).strip() if manifest.get("input_schema") else None,
-            is_destructive=bool(manifest.get("is_destructive", False)),
+            is_destructive=is_destructive,
+            allow_in_read_only=bool(manifest.get("allow_in_read_only", not is_destructive)),
+            allow_in_normal=bool(manifest.get("allow_in_normal", True)),
+            allow_in_yolo=bool(manifest.get("allow_in_yolo", True)),
             handler=handler,
             path=resolved,
         )

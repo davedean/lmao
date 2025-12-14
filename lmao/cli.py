@@ -31,7 +31,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-p", type=float, default=None, help="Nucleus sampling top_p")
     parser.add_argument("--max-tokens", type=int, default=None, help="Max tokens for responses")
     parser.add_argument("--workdir", default=None, help="Working directory for tools (default: current working directory)")
-    parser.add_argument("--allow-git", action="store_true", help="Enable git add/commit tools (disabled by default)")
     parser.add_argument("--max-tool-lines", type=int, default=8, help="Max lines to show from tool output in console summaries (0 for none)")
     parser.add_argument("--max-tool-chars", type=int, default=400, help="Max chars to show from tool output in console summaries (0 for none)")
     parser.add_argument("--max-turns", type=int, default=None, help="Maximum conversation turns before stopping")
@@ -70,7 +69,6 @@ def main() -> None:
             initial_prompt=initial_prompt,
             client=client,
             workdir=base_dir,
-            git_allowed=args.allow_git,
             max_tool_output=(args.max_tool_lines, args.max_tool_chars),
             max_turns=args.max_turns,
             silent_tools=args.silent_tools,

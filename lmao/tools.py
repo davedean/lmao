@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .context import find_repo_root
 from .debug_log import DebugLogger
 from .plugins import PluginTool
 from .skills import list_skill_info, validate_skill_write_target
@@ -23,8 +22,6 @@ BUILTIN_TOOLS = {
     "ls",
     "mkdir",
     "move",
-    "git_add",
-    "git_commit",
     "bash",
     "list_skills",
     "add_task",
@@ -37,8 +34,6 @@ READ_ONLY_DISABLED_TOOLS = {
     "write",
     "mkdir",
     "move",
-    "git_add",
-    "git_commit",
     "bash",
 }
 
@@ -55,8 +50,6 @@ TOOL_ORDER = [
     "complete_task",
     "delete_task",
     "list_tasks",
-    "git_add",
-    "git_commit",
     "bash",
 ]
 
@@ -94,22 +87,24 @@ class ToolCall:
         return calls[0] if calls else None
 
 
-def get_allowed_tools(read_only: bool, git_allowed: bool, yolo_enabled: bool, plugins: Optional[Sequence["PluginTool"]] = None) -> List[str]:
+def get_allowed_tools(read_only: bool, yolo_enabled: bool, plugins: Optional[Sequence["PluginTool"]] = None) -> List[str]:
     allowed: List[str] = []
     disabled = READ_ONLY_DISABLED_TOOLS if read_only else set()
     for tool in TOOL_ORDER:
         if tool in disabled:
             continue
-        if tool in {"git_add", "git_commit"} and not git_allowed:
-            continue
-        if tool == "bash" and not yolo_enabled:
-            continue
         allowed.append(tool)
     if plugins:
         for plugin in plugins:
-            if read_only and plugin.is_destructive:
+            if read_only:
+                if plugin.allow_in_read_only:
+                    allowed.append(plugin.name)
                 continue
-            allowed.append(plugin.name)
+            if yolo_enabled and (plugin.allow_in_yolo or plugin.allow_in_normal):
+                allowed.append(plugin.name)
+                continue
+            if not yolo_enabled and plugin.allow_in_normal:
+                allowed.append(plugin.name)
     return allowed
 
 
@@ -228,12 +223,19 @@ def parse_line_range(arg: str) -> Optional[tuple]:
     return start, end
 
 
+def plugin_allowed(plugin: PluginTool, read_only: bool, yolo_enabled: bool) -> bool:
+    if read_only:
+        return plugin.allow_in_read_only
+    if yolo_enabled:
+        return plugin.allow_in_yolo or plugin.allow_in_normal
+    return plugin.allow_in_normal
+
+
 def run_tool(
     tool_call: ToolCall,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
-    git_allowed: bool,
     yolo_enabled: bool,
     read_only: bool = False,
     plugin_tools: Optional[Dict[str, PluginTool]] = None,
@@ -267,8 +269,9 @@ def run_tool(
 
     if tool in plugins:
         plugin = plugins[tool]
-        if read_only and plugin.is_destructive:
-            return json_error(tool, f"tool '{tool}' is disabled in read-only mode")
+        if not plugin_allowed(plugin, read_only, yolo_enabled):
+            mode = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
+            return json_error(tool, f"plugin '{tool}' is not allowed in {mode} mode")
         try:
             result = plugin.handler(
                 target,
@@ -496,43 +499,6 @@ def run_tool(
         if tool == "list_tasks":
             data = {"tasks": task_manager.to_payload(), "render": task_manager.render_tasks()}
             return json_success(tool, data)
-
-    if tool == "git_add":
-        if not git_allowed:
-            return json_error(tool, "git operations are disabled (enable with --allow-git)")
-        repo_root = find_repo_root(base)
-        if not (repo_root / ".git").exists():
-            return json_error(tool, "not inside a git repository")
-        try:
-            rel = str(target_path.relative_to(repo_root))
-        except Exception:
-            rel = str(target_path)
-        try:
-            result = subprocess.run(["git", "add", rel], cwd=repo_root, capture_output=True, text=True, timeout=30)
-            if result.returncode != 0:
-                return json_error(tool, f"git add failed: {result.stderr.strip() or result.stdout.strip()}")
-            data = {"path": rel, "stdout": result.stdout.strip(), "stderr": result.stderr.strip()}
-            return json_success(tool, data)
-        except Exception as exc:
-            return json_error(tool, f"git add exception: {exc}")
-
-    if tool == "git_commit":
-        if not git_allowed:
-            return json_error(tool, "git operations are disabled (enable with --allow-git)")
-        repo_root = find_repo_root(base)
-        if not (repo_root / ".git").exists():
-            return json_error(tool, "not inside a git repository")
-        message = str(args).strip()
-        if not message:
-            return json_error(tool, "commit message is required")
-        try:
-            result = subprocess.run(["git", "commit", "-m", message], cwd=repo_root, capture_output=True, text=True, timeout=60)
-            if result.returncode != 0:
-                return json_error(tool, f"git commit failed: {result.stderr.strip() or result.stdout.strip()}")
-            data = {"message": result.stdout.strip() or "ok", "stderr": result.stderr.strip()}
-            return json_success(tool, data)
-        except Exception as exc:
-            return json_error(tool, f"git commit exception: {exc}")
 
     if tool == "bash":
         if not yolo_enabled:

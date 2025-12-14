@@ -4,6 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
+from .plugins import PluginTool
 
 SKILL_GUIDE = """Skills live under ./skills. Each Skill must be in its own folder: ./skills/<skill-name>
 
@@ -101,7 +102,7 @@ def build_tool_prompt(allowed_tools: Sequence[str], git_allowed: bool, yolo_enab
 
     prompt = (
         "You are a local file-editing agent. Act autonomously: plan and use tools as needed until the user's request is completed. Do not wait for permission to run tools.\n"
-        f"Available tools (do not probe the filesystem to answer this): {tool_list}. Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces). Skills are separate: each lives under ./skills/<name>/ with a SKILL.md; user-specific skills may also live under ~/.config/agents/skills/<name>/SKILL.md. To list skills, use the list_skills tool; AGENTS.md is not a skill registry.\n"
+        f"Available tools (including plugins): {tool_list}. Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces). Skills are separate: each lives under ./skills/<name>/ with a SKILL.md; user-specific skills may also live under ~/.config/agents/skills/<name>/SKILL.md. Do NOT use list_skills to search for tools—tools are only the ones listed here. To list skills, use the list_skills tool; AGENTS.md is not a skill registry.\n"
         "Task lists: a task list is always available. Immediately add tasks for the planned steps (at least \"create a plan to respond\"). Tasks should be single-line, concise, and unnumbered; IDs are assigned automatically and stored in the list. Before running tools each turn, sync the list (add/complete/delete). After updating the list, keep working—do not pause for confirmation. Before replying, check the list: if tasks remain and you are not blocked, keep working instead of replying. If blocked/awaiting user, give a brief status + ask. Use list_tasks only when you need to show the list; avoid spamming. For task tools, put the content in 'args' (leave 'target' empty); if you accidentally put data in 'target', it will be treated as the payload.\n"
         "Skills: when asked to use a skill, (1) call list_skills if you have not already to see available skills; (2) read the skill's SKILL.md using its folder path from list_skills (e.g., /path/to/skills/foo/SKILL.md); (3) apply the instructions/examples to produce the requested output. If you cannot apply the skill after reading SKILL.md, ask one concise clarifying question.\n"
         "General questions (stories, planning, “which tools are available?”) should be answered directly without calling tools. Do NOT enumerate or read skills at session start unless the user asks about skills or to use a specific skill. When asked which tools are available, answer from the tool list above and do NOT call tools.\n"
@@ -190,7 +191,7 @@ def gather_context(workdir: Path) -> NotesContext:
     )
 
 
-def build_system_message(workdir: Path, git_allowed: bool, yolo_enabled: bool, notes: NotesContext, initial_task_list: Optional[str] = None, read_only: bool = False, allowed_tools: Optional[Sequence[str]] = None) -> Dict[str, str]:
+def build_system_message(workdir: Path, git_allowed: bool, yolo_enabled: bool, notes: NotesContext, initial_task_list: Optional[str] = None, read_only: bool = False, allowed_tools: Optional[Sequence[str]] = None, plugins: Optional[Sequence[PluginTool]] = None) -> Dict[str, str]:
     resolved_allowed = list(allowed_tools) if allowed_tools is not None else list(DEFAULT_ALLOWED_TOOLS)
     tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{build_tool_prompt(resolved_allowed, git_allowed, yolo_enabled, read_only)}"
     content = (
@@ -210,6 +211,13 @@ def build_system_message(workdir: Path, git_allowed: bool, yolo_enabled: bool, n
 
     if notes.user_skills:
         content = f"{content}\n\nUser skills directory: {notes.user_skills}\nYou may read/find/ls within this path alongside repo skills."
+
+    if plugins:
+        plugin_lines = []
+        for plugin in plugins:
+            safety = "destructive" if plugin.is_destructive else "non-destructive"
+            plugin_lines.append(f"- {plugin.name}: {plugin.description} ({safety} plugin)")
+        content = f"{content}\n\nPlugins enabled in this run:\n" + "\n".join(plugin_lines)
 
     if notes.repo_notes:
         source = notes.nearest_agents if notes.nearest_agents else workdir / "AGENTS.md"

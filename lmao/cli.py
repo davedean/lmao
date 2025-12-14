@@ -64,6 +64,8 @@ def main() -> None:
     )
 
     try:
+        # Locate the built-in tools directory next to the installed lmao package.
+        built_in_plugins_dir = Path(__file__).resolve().parent / "tools"
         run_loop(
             initial_prompt=initial_prompt,
             client=client,
@@ -74,6 +76,7 @@ def main() -> None:
             silent_tools=args.silent_tools,
             yolo_enabled=args.yolo,
             read_only=args.read_only,
+            plugin_dirs=[built_in_plugins_dir],
             debug_logger=debug_logger,
         )
     except KeyboardInterrupt:

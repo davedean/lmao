@@ -57,10 +57,11 @@ def _load_module(path: Path) -> Optional[ModuleType]:
     return module
 
 
-def load_plugin(path: Path, base: Path, debug_logger: Optional[DebugLogger] = None) -> Optional[PluginTool]:
+def load_plugin(path: Path, base: Path, debug_logger: Optional[DebugLogger] = None, allow_outside_base: bool = False) -> Optional[PluginTool]:
     try:
         resolved = path.resolve()
-        resolved.relative_to(base)
+        if not allow_outside_base:
+            resolved.relative_to(base)
     except Exception:
         if debug_logger:
             debug_logger.log("plugin.skip", f"path_outside_base={path}")
@@ -99,7 +100,7 @@ def load_plugin(path: Path, base: Path, debug_logger: Optional[DebugLogger] = No
         return None
 
 
-def discover_plugins(plugin_dirs: Iterable[Path], base: Path, debug_logger: Optional[DebugLogger] = None) -> Dict[str, PluginTool]:
+def discover_plugins(plugin_dirs: Iterable[Path], base: Path, debug_logger: Optional[DebugLogger] = None, allow_outside_base: bool = False) -> Dict[str, PluginTool]:
     plugins: Dict[str, PluginTool] = {}
     for directory in plugin_dirs:
         try:
@@ -108,18 +109,12 @@ def discover_plugins(plugin_dirs: Iterable[Path], base: Path, debug_logger: Opti
             if debug_logger:
                 debug_logger.log("plugin.dir_error", f"path={directory}")
             continue
-        try:
-            resolved_dir.relative_to(base)
-        except Exception:
-            if debug_logger:
-                debug_logger.log("plugin.dir_outside_base", f"path={resolved_dir}")
-            continue
         if not resolved_dir.exists() or not resolved_dir.is_dir():
             if debug_logger:
                 debug_logger.log("plugin.dir_missing", f"path={resolved_dir}")
             continue
         for plugin_path in resolved_dir.rglob("tool.py"):
-            plugin = load_plugin(plugin_path, base, debug_logger=debug_logger)
+            plugin = load_plugin(plugin_path, base, debug_logger=debug_logger, allow_outside_base=allow_outside_base)
             if not plugin:
                 continue
             if plugin.name in plugins:

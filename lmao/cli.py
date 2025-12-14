@@ -40,7 +40,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--yolo", action="store_true", help="Enable unsafe 'bash' tool with per-command confirmation (off by default)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log in the working directory")
     parser.add_argument("--read-only", action="store_true", help="Disable destructive tools (writes/moves/git/bash); for inspection-only sessions")
-    parser.add_argument("--plugins-dir", action="append", default=[], help="Path to a directory containing plugin tool modules (repeatable)")
     return parser
 
 
@@ -65,6 +64,8 @@ def main() -> None:
     )
 
     try:
+        # Locate the built-in tools directory next to the installed lmao package.
+        built_in_plugins_dir = Path(__file__).resolve().parent / "tools"
         run_loop(
             initial_prompt=initial_prompt,
             client=client,
@@ -75,7 +76,7 @@ def main() -> None:
             silent_tools=args.silent_tools,
             yolo_enabled=args.yolo,
             read_only=args.read_only,
-            plugin_dirs=[Path(p) for p in args.plugins_dir],
+            plugin_dirs=[built_in_plugins_dir],
             debug_logger=debug_logger,
         )
     except KeyboardInterrupt:

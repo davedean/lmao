@@ -155,7 +155,7 @@ def run_loop(
         extra_roots.append(resolved_user_skills)
         skill_roots.append(resolved_user_skills)
 
-    plugins = discover_plugins(plugin_dirs or [], base, debug_logger=debug_logger)
+    plugins = discover_plugins(plugin_dirs or [], base, debug_logger=debug_logger, allow_outside_base=True)
     if debug_logger and plugins:
         debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
     allowed_tools = get_allowed_tools(read_only=read_only, git_allowed=git_allowed, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))

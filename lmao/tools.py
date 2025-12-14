@@ -22,10 +22,6 @@ BUILTIN_TOOLS = {
     "mkdir",
     "move",
     "list_skills",
-    "add_task",
-    "complete_task",
-    "delete_task",
-    "list_tasks",
 }
 
 READ_ONLY_DISABLED_TOOLS = {
@@ -43,10 +39,6 @@ TOOL_ORDER = [
     "find",
     "grep",
     "list_skills",
-    "add_task",
-    "complete_task",
-    "delete_task",
-    "list_tasks",
 ]
 
 def json_success(tool: str, data: Any, note: Optional[str] = None) -> str:

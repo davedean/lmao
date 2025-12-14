@@ -9,10 +9,10 @@
 - Tests live in `tests/` (unittest-based).
 
 ## Runtime Behavior & Tools
-- Default tools: read, write, mkdir, move, ls, find, grep, list_skills, task list tools (add/complete/delete/list), plus plugins (git_add/git_commit, bash). Tool outputs are JSON (`success` + `data`/`error`); only the first tool call in a message runs.
+- Default tools: read, write, mkdir, move, ls, find, grep, list_skills, plus plugins (task list tools add/complete/delete/list, git_add/git_commit, bash). Tool outputs are JSON (`success` + `data`/`error`); only the first tool call in a message runs.
 - Task list is always present and seeded with “create a plan to respond”; use task tools to keep it updated before replying.
 - Path safety keeps targets under the working directory; writes into skill roots must stay inside `skills/<name>/`.
-- Plugins: any `tool.py` under `lmao/tools/**` is loaded; plugin manifest controls if it is allowed in read-only, normal, or yolo modes, and whether it needs per-use confirmation. Git add/commit and bash ship as plugins under `lmao/tools/git-*` and `lmao/tools/bash`; they are available in normal/yolo but blocked in read-only. Bash always asks for confirmation.
+- Plugins: any `tool.py` under `lmao/tools/**` is loaded; plugin manifest controls if it is allowed in read-only, normal, or yolo modes, and whether it needs per-use confirmation. Task tools, git add/commit, and bash ship as plugins under `lmao/tools/*`; git/bash are available in normal/yolo but blocked in read-only. Bash always asks for confirmation.
 - Read-only mode disables write/mkdir/move and any plugin that opts out of read-only (most destructive ones).
 
 ## Build, Test, and Development Commands

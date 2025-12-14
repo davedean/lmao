@@ -18,6 +18,7 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "input_schema": "commit message in args",
+    "usage": "{'tool':'git_commit','target':'','args':'commit message'}",
 }
 
 

@@ -18,6 +18,10 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "target path; args optional line range string",
+    "usage": [
+        "{'tool':'read','target':'./filename','args':''}",
+        "{'tool':'read','target':'./filename','args':'lines:10-40'}",
+    ],
 }
 
 

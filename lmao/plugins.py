@@ -17,6 +17,7 @@ class PluginTool:
     name: str
     description: str
     input_schema: Optional[str]
+    usage_examples: list[str]
     is_destructive: bool
     allow_in_read_only: bool
     allow_in_normal: bool
@@ -46,6 +47,9 @@ def _validate_manifest(manifest: Dict[str, Any]) -> Optional[str]:
     input_schema = manifest.get("input_schema")
     if input_schema is not None and not isinstance(input_schema, str):
         return "input_schema must be a string when provided"
+    usage = manifest.get("usage")
+    if usage is not None and not isinstance(usage, (str, list, tuple)):
+        return "usage must be a string or list of strings when provided"
     for key in ("allow_in_read_only", "allow_in_normal", "allow_in_yolo"):
         value = manifest.get(key, None)
         if value is not None and not isinstance(value, bool):
@@ -96,10 +100,16 @@ def load_plugin(path: Path, base: Path, debug_logger: Optional[DebugLogger] = No
         return None
     try:
         is_destructive = bool(manifest.get("is_destructive", False))
+        raw_usage = manifest.get("usage") or []
+        if isinstance(raw_usage, str):
+            usage_examples = [raw_usage.strip()] if raw_usage.strip() else []
+        else:
+            usage_examples = [str(item).strip() for item in raw_usage if str(item).strip()]
         tool = PluginTool(
             name=str(manifest["name"]).strip(),
             description=str(manifest["description"]).strip(),
             input_schema=str(manifest["input_schema"]).strip() if manifest.get("input_schema") else None,
+            usage_examples=usage_examples,
             is_destructive=is_destructive,
             allow_in_read_only=bool(manifest.get("allow_in_read_only", not is_destructive)),
             allow_in_normal=bool(manifest.get("allow_in_normal", True)),

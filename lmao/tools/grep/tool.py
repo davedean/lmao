@@ -18,6 +18,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "target file/dir; args is pattern string",
+    "usage": "{'tool':'grep','target':'./path','args':'substring'}",
 }
 
 

@@ -19,6 +19,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": True,
     "input_schema": "command string in args; target may be cwd",
+    "usage": "{'tool':'bash','target':'optional_cwd','args':'command'}",
 }
 
 

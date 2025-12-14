@@ -22,6 +22,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "target path; args is file content",
+    "usage": "{'tool':'write','target':'./filename','args':'new content'}",
 }
 
 

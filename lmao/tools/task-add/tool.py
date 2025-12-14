@@ -18,6 +18,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "task text in args (or target)",
+    "usage": "{'tool':'add_task','target':'','args':'task description'}",
 }
 
 

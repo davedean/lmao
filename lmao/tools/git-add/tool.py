@@ -18,6 +18,7 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "input_schema": "path to add",
+    "usage": "{'tool':'git_add','target':'./path','args':''}",
 }
 
 

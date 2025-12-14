@@ -19,6 +19,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "target directory",
+    "usage": "{'tool':'find','target':'.','args':''}",
 }
 
 

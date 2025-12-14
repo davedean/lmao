@@ -30,25 +30,6 @@ Constraints:
 # this fallback remains empty to avoid drifting from runtime discovery.
 DEFAULT_ALLOWED_TOOLS: list[str] = []
 
-TOOL_EXAMPLES = {
-    "read": "{'tool':'read','target':'./filename','args':''}",
-    "read_range": "{'tool':'read','target':'./filename','args':'lines:10-40'}",
-    "write": "{'tool':'write','target':'./filename','args':'new content'}",
-    "mkdir": "{'tool':'mkdir','target':'./dirname','args':''}",
-    "move": "{'tool':'move','target':'./old_path','args':'./new_path'}",
-    "find": "{'tool':'find','target':'.','args':''}",
-    "ls": "{'tool':'ls','target':'.','args':''}",
-    "grep": "{'tool':'grep','target':'./path','args':'substring'}",
-    "list_skills": "{'tool':'list_skills','target':'','args':''}",
-    "add_task": "{'tool':'add_task','target':'','args':'task description'}",
-    "complete_task": "{'tool':'complete_task','target':'','args':'task id'}",
-    "delete_task": "{'tool':'delete_task','target':'','args':'task id'}",
-    "list_tasks": "{'tool':'list_tasks','target':'','args':''}",
-    "git_add": "{'tool':'git_add','target':'./path','args':''}",
-    "git_commit": "{'tool':'git_commit','target':'','args':'commit message'}",
-    "bash": "{'tool':'bash','target':'optional_cwd','args':'command'}",
-}
-
 GENERAL_INTRO_PROMPT = """You are running inside an agentic loop that can repeatedly call tools and skills to complete the user's request. Act autonomously: plan, use tools, and work through your task list until the job is done.
 - ALWAYS maintain a task list (create one if missing) with an initial item like "create a plan to respond". ALWAYS manage a task list by using the task list tools.
 - Use one tool call at a time; do not batch multiple JSON blocks.
@@ -74,17 +55,17 @@ Always check that all tasks on the task list are complete before responding to t
   """
 
 
-def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_only: bool) -> str:
+def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_only: bool, plugins: Optional[Sequence[PluginTool]] = None) -> str:
     resolved = list(allowed_tools) if allowed_tools else list(DEFAULT_ALLOWED_TOOLS)
     tool_list = ", ".join(resolved) if resolved else "(no tools discovered)"
-    example_keys: List[str] = []
-    for tool in resolved:
-        if tool == "read":
-            example_keys.extend(["read", "read_range"])
-        elif tool in TOOL_EXAMPLES:
-            example_keys.append(tool)
-    example_lines = [TOOL_EXAMPLES[key] for key in example_keys if key in TOOL_EXAMPLES]
-    examples_block = "\n".join(example_lines)
+    example_lines: list[str] = []
+    if plugins:
+        plugin_map = {plugin.name: plugin for plugin in plugins}
+        for name in resolved:
+            plugin = plugin_map.get(name)
+            if plugin and plugin.usage_examples:
+                example_lines.extend(plugin.usage_examples)
+    examples_block = "\n".join(example_lines) if example_lines else "(no tool examples provided by plugins)"
 
     prompt = (
         "You are a local file-editing agent. Act autonomously: plan and use tools as needed until the user's request is completed. Do not wait for permission to run tools.\n"
@@ -175,7 +156,7 @@ def gather_context(workdir: Path) -> NotesContext:
 
 def build_system_message(workdir: Path, yolo_enabled: bool, notes: NotesContext, initial_task_list: Optional[str] = None, read_only: bool = False, allowed_tools: Optional[Sequence[str]] = None, plugins: Optional[Sequence[PluginTool]] = None) -> Dict[str, str]:
     resolved_allowed = list(allowed_tools) if allowed_tools is not None else list(DEFAULT_ALLOWED_TOOLS)
-    tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{build_tool_prompt(resolved_allowed, yolo_enabled, read_only)}"
+    tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{build_tool_prompt(resolved_allowed, yolo_enabled, read_only, plugins=plugins)}"
     content = (
         f"{tool_prompt}\n"
         f"Working directory: {workdir}\n"

@@ -17,6 +17,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "none",
+    "usage": "{'tool':'list_skills','target':'','args':''}",
 }
 
 

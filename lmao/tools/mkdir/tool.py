@@ -18,6 +18,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "target directory path",
+    "usage": "{'tool':'mkdir','target':'./dirname','args':''}",
 }
 
 

@@ -18,6 +18,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "target is source; args is destination",
+    "usage": "{'tool':'move','target':'./old_path','args':'./new_path'}",
 }
 
 

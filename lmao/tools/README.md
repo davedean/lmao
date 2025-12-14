@@ -12,6 +12,7 @@ Built-in plugins live under `lmao/tools/<plugin-name>/tool.py` and are auto-load
   - `allow_in_yolo` (bool; defaults to `True`; yolo mode also enables plugins allowed in normal)
   - `always_confirm` (bool; defaults to `False`; when true, the user must approve each run)
   - `input_schema` (optional string description)
+  - `usage` (optional string or list of example tool JSON payloads used in the system prompt)
 - `run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None) -> str` that returns a JSON string with `{"tool": name, "success": bool, "data"|"error": ...}`.
 
 Mode gating:

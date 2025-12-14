@@ -17,6 +17,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "task id in args (or target)",
+    "usage": "{'tool':'delete_task','target':'','args':'task id'}",
 }
 
 

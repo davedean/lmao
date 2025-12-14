@@ -229,3 +229,7 @@ class BuiltinPluginTests(TestCase):
         payload = json.loads(result)
         self.assertFalse(payload["success"])
         self.assertIn("not approved", payload["error"])
+
+    def test_builtin_plugins_include_usage_examples(self) -> None:
+        missing = [name for name, plugin in self.plugins.items() if not plugin.usage_examples]
+        self.assertEqual([], missing)

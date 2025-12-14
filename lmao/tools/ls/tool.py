@@ -18,6 +18,7 @@ PLUGIN = {
     "allow_in_yolo": True,
     "always_confirm": False,
     "input_schema": "target path (file or directory)",
+    "usage": "{'tool':'ls','target':'.','args':''}",
 }
 
 

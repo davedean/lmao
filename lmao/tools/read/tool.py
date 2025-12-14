@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
-from lmao.debug_log import DebugLogger
 from lmao.plugins import PLUGIN_API_VERSION
-from lmao.tools import normalize_path_for_output, parse_line_range, safe_target_path
+from lmao.debug_log import DebugLogger
+from lmao.plugin_helpers import normalize_path_for_output, parse_line_range, safe_target_path
 
 PLUGIN = {
     "name": "read",

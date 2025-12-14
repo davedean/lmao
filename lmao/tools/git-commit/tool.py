@@ -5,9 +5,9 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Sequence
 
-from lmao.context import find_repo_root
-from lmao.debug_log import DebugLogger
 from lmao.plugins import PLUGIN_API_VERSION
+from lmao.debug_log import DebugLogger
+from lmao.plugin_helpers import find_repo_root
 
 PLUGIN = {
     "name": "git_commit",

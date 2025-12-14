@@ -7,7 +7,7 @@ from typing import Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 from lmao.debug_log import DebugLogger
-from lmao.tools import safe_target_path
+from lmao.plugin_helpers import safe_target_path
 
 PLUGIN = {
     "name": "bash",

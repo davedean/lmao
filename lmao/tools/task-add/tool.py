@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 from typing import Optional, Sequence
 
-from lmao.debug_log import DebugLogger
 from lmao.plugins import PLUGIN_API_VERSION
-from lmao.tools import normalize_task_text
+from lmao.debug_log import DebugLogger
+from lmao.plugin_helpers import normalize_task_text
 
 PLUGIN = {
     "name": "add_task",

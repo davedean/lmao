@@ -26,5 +26,6 @@ Safety tips:
 - Destructive plugins should usually set `allow_in_read_only=False`.
 
 Examples:
+- Core plugins: file ops (read/write/mkdir/move/ls/find/grep), task tools, git add/commit, and bash all live under `lmao/tools/*`.
 - Git plugins (`lmao/tools/git-add`, `lmao/tools/git-commit`) allow normal/yolo, block read-only.
 - A hypothetical delete plugin could set `allow_in_normal=False`, `allow_in_yolo=True`, and `always_confirm=True` to prompt before executing.

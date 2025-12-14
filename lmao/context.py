@@ -39,6 +39,9 @@ DEFAULT_ALLOWED_TOOLS = [
     "complete_task",
     "delete_task",
     "list_tasks",
+    "git_add",
+    "git_commit",
+    "bash",
 ]
 
 TOOL_EXAMPLES = {

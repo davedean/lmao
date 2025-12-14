@@ -136,7 +136,7 @@ class ToolSafetyTests(TestCase):
         spaced_dir.mkdir()
         (spaced_dir / "file name.txt").write_text("hi", encoding="utf-8")
         call = ToolCall(tool="find", target=".", args="")
-        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False)
+        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins)
         payload = json.loads(output)
         paths = {entry["path"] for entry in payload["data"]["results"]}
         self.assertIn("my folder/", paths)

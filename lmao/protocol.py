@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -101,6 +102,29 @@ def _extract_json_prefix_on_extra_data(raw_text: str) -> Optional[dict]:
             return None
 
 
+def _load_jsonish_dict(raw_text: str) -> Dict[str, Any]:
+    try:
+        obj = json.loads(raw_text)
+        if not isinstance(obj, dict):
+            raise ProtocolError("assistant_turn must be an object")
+        return obj
+    except Exception as exc:
+        recovered = _extract_json_prefix_on_extra_data(raw_text)
+        if recovered is not None:
+            return recovered
+        try:
+            literal = ast.literal_eval(raw_text.strip())
+            if isinstance(literal, dict):
+                return literal
+        except Exception:
+            pass
+        raise ProtocolError(f"invalid JSON: {exc}") from exc
+
+
+def _wrap_single_step(obj: Dict[str, Any]) -> Dict[str, Any]:
+    return {"type": "assistant_turn", "version": PROTOCOL_VERSION, "steps": [obj]}
+
+
 def _parse_task_tool_alias_step(step_obj: Dict[str, Any], allowed_tools: Sequence[str], idx: int) -> ToolCallStep:
     tool = _require_str(step_obj.get("type", ""), f"steps[{idx}].type")
     if tool not in set(allowed_tools):
@@ -131,18 +155,13 @@ def _parse_task_tool_alias_step(step_obj: Dict[str, Any], allowed_tools: Sequenc
 
 
 def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> AssistantTurn:
-    try:
-        parsed = json.loads(raw_text)
-    except Exception as exc:
-        recovered = _extract_json_prefix_on_extra_data(raw_text)
-        if recovered is not None:
-            parsed = recovered
-        else:
-            raise ProtocolError(f"invalid JSON: {exc}") from exc
-
-    obj = _require_dict(parsed, "assistant_turn")
+    obj = _load_jsonish_dict(raw_text)
     if obj.get("type") != "assistant_turn":
-        raise ProtocolError("assistant_turn.type must be 'assistant_turn'")
+        # Back-compat / model convenience: accept a single step dict and wrap it.
+        if obj.get("type") in {"think", "tool_call", "message", "end"}:
+            obj = _wrap_single_step(obj)
+        else:
+            raise ProtocolError("assistant_turn.type must be 'assistant_turn'")
     version = str(obj.get("version", "")).strip()
     if version != PROTOCOL_VERSION:
         raise ProtocolError(f"assistant_turn.version must be '{PROTOCOL_VERSION}'")
@@ -162,6 +181,18 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
             content = _require_str(step_obj.get("content", ""), f"steps[{idx}].content")
             fmt = str(step_obj.get("format", "markdown") or "markdown")
             purpose = str(step_obj.get("purpose", "progress") or "progress").strip() or "progress"
+            purpose_aliases = {
+                # Common model mistakes
+                "success": "progress",
+                "ok": "progress",
+                "done": "progress",
+                "complete": "progress",
+                "completed": "progress",
+                "result": "progress",
+                "answer": "final",
+                "conclusion": "final",
+            }
+            purpose = purpose_aliases.get(purpose, purpose)
             allowed_purposes = {"progress", "clarification", "cannot_finish", "final"}
             if purpose not in allowed_purposes:
                 raise ProtocolError(

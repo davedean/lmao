@@ -33,6 +33,17 @@ class ProtocolParsingTests(TestCase):
         with self.assertRaises(ProtocolError):
             parse_assistant_turn(raw, allowed_tools=["read"])
 
+    def test_coerces_common_message_purpose_aliases(self) -> None:
+        raw = json.dumps(
+            {
+                "type": "assistant_turn",
+                "version": "1",
+                "steps": [{"type": "message", "purpose": "success", "content": "hi"}],
+            }
+        )
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("assistant_turn", turn.type)
+
     def test_rejects_multiple_tool_calls(self) -> None:
         raw = json.dumps(
             {
@@ -81,3 +92,14 @@ class ProtocolParsingTests(TestCase):
         )
         turn = parse_assistant_turn(raw, allowed_tools=["read"])
         self.assertEqual("assistant_turn", turn.type)
+
+    def test_accepts_python_dict_repr(self) -> None:
+        raw = "{'type':'assistant_turn','version':'1','steps':[{'type':'message','content':'hi'}]}"
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("assistant_turn", turn.type)
+
+    def test_wraps_single_tool_call_step(self) -> None:
+        raw = "{'type':'tool_call','call':{'tool':'read','target':'a.txt','args':'lines:1-2'}}"
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("assistant_turn", turn.type)
+        self.assertEqual(1, len(turn.steps))

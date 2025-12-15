@@ -215,6 +215,7 @@ class BuiltinPluginTests(TestCase):
         core_names = {
             "read",
             "write",
+            "patch",
             "mkdir",
             "move",
             "ls",

@@ -27,6 +27,34 @@ def _error(message: str) -> str:
     return json.dumps({"tool": PLUGIN["name"], "success": False, "error": message}, ensure_ascii=False)
 
 
+def _parse_task_id(payload: object, target: str) -> Optional[int]:
+    raw = payload if payload is not None else ""
+    if isinstance(raw, str):
+        raw = raw.strip()
+    if (not raw) and target:
+        raw = str(target).strip()
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        if raw.startswith("{") and raw.endswith("}"):
+            try:
+                obj = json.loads(raw)
+            except Exception:
+                obj = None
+            if isinstance(obj, dict):
+                for key in ("id", "task_id", "taskId", "args", "target"):
+                    value = obj.get(key)
+                    if isinstance(value, int):
+                        return value
+                    if isinstance(value, str) and value.strip().isdigit():
+                        return int(value.strip())
+        try:
+            return int(raw)
+        except Exception:
+            return None
+    return None
+
+
 def run(
     target: str,
     args: str,
@@ -38,14 +66,8 @@ def run(
 ) -> str:
     if task_manager is None:
         return _error("task list manager unavailable")
-    payload = args if args is not None else ""
-    if isinstance(payload, str):
-        payload = payload.strip()
-    if (not payload) and target:
-        payload = str(target).strip()
-    try:
-        task_id = int(str(payload).strip())
-    except Exception:
+    task_id = _parse_task_id(args, target)
+    if task_id is None:
         return _error("task id must be an integer")
     message = task_manager.delete_task(task_id)
     if message.startswith("error:"):

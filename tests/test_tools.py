@@ -64,6 +64,26 @@ class ToolSafetyTests(TestCase):
         self.assertEqual({"start": 2, "end": 3}, payload["data"]["lines"])
         self.assertEqual("b\nc", payload["data"]["content"])
 
+    def test_patch_replaces_line_range(self) -> None:
+        target = self.base / "hello.txt"
+        target.write_text("a\nb\nc\nd\n", encoding="utf-8")
+        args = json.dumps({"range": "lines:2-3", "content": "B\nC\n"})
+        call = ToolCall(tool="patch", target="hello.txt", args=args)
+        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins)
+        payload = json.loads(output)
+        self.assertTrue(payload["success"])
+        self.assertEqual({"start": 2, "end": 3}, payload["data"]["range"])
+        self.assertEqual("a\nB\nC\nd\n", target.read_text(encoding="utf-8"))
+
+    def test_read_only_blocks_patch(self) -> None:
+        target = self.base / "hello.txt"
+        target.write_text("a\n", encoding="utf-8")
+        call = ToolCall(tool="patch", target="hello.txt", args=json.dumps({"range": "lines:1-1", "content": "b\n"}))
+        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, read_only=True, plugin_tools=self.plugins)
+        payload = json.loads(output)
+        self.assertFalse(payload["success"])
+        self.assertIn("read-only", payload["error"])
+
     def test_write_blocks_top_level_skill_file(self) -> None:
         skills_root = self.base / "skills"
         skills_root.mkdir()
@@ -132,6 +152,17 @@ class ToolSafetyTests(TestCase):
         list_payload_done = json.loads(list_out_done)
         self.assertTrue(list_payload_done["success"])
         self.assertIn("[x] 1 do something", list_payload_done["data"]["render"])
+
+    def test_complete_task_accepts_json_dict_args(self) -> None:
+        manager = TaskListManager()
+        add = ToolCall(tool="add_task", target="", args="do something")
+        run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
+
+        complete = ToolCall(tool="complete_task", target="", args=json.dumps({"task_id": 1}))
+        out = run_tool(complete, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
+        payload = json.loads(out)
+        self.assertTrue(payload["success"])
+        self.assertIn("completed task 1", payload["data"]["message"])
 
     def test_task_tools_accept_target_as_payload(self) -> None:
         manager = TaskListManager()

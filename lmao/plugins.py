@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
@@ -65,8 +66,12 @@ def _load_module(path: Path) -> Optional[ModuleType]:
         return None
     module = importlib.util.module_from_spec(spec)
     try:
+        # Some stdlib features (e.g., dataclasses) expect the module to be present in sys.modules
+        # while executing. When running via exec_module directly, we must register it ourselves.
+        sys.modules[spec.name] = module
         spec.loader.exec_module(module)
     except Exception:
+        sys.modules.pop(spec.name, None)
         return None
     return module
 

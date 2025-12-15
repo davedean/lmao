@@ -29,5 +29,6 @@ Safety tips:
 
 Examples:
 - Core plugins: file ops (read/write/mkdir/move/ls/find/grep), task tools, git add/commit, and bash all live under `lmao/tools/*`.
+- Patch plugin (`lmao/tools/patch`) updates a line range in an existing file without rewriting the entire file content.
 - Git plugins (`lmao/tools/git-add`, `lmao/tools/git-commit`) allow normal/yolo, block read-only.
 - A hypothetical delete plugin could set `allow_in_normal=False`, `allow_in_yolo=True`, and `always_confirm=True` to prompt before executing.

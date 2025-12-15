@@ -1,7 +1,7 @@
 import json
 from unittest import TestCase
 
-from lmao.llm import _parse_chat_completion, estimate_message_tokens, estimate_tokens
+from lmao.llm import _build_request_headers, _parse_chat_completion, estimate_message_tokens, estimate_tokens
 
 
 class LLMHelpersTests(TestCase):
@@ -30,3 +30,29 @@ class LLMHelpersTests(TestCase):
         assert usage is not None
         self.assertEqual(10, usage["prompt_tokens"])
 
+    def test_parse_chat_completion_falls_back_to_text(self) -> None:
+        body = json.dumps({"choices": [{"text": "hello"}]})
+        content, usage = _parse_chat_completion(body)
+        self.assertEqual("hello", content)
+        self.assertIsNone(usage)
+
+    def test_build_request_headers_openrouter_requires_key(self) -> None:
+        with self.assertRaises(ValueError):
+            _build_request_headers(
+                provider="openrouter",
+                api_key=None,
+                openrouter_referer=None,
+                openrouter_title=None,
+            )
+
+    def test_build_request_headers_openrouter_includes_expected_headers(self) -> None:
+        headers = _build_request_headers(
+            provider="openrouter",
+            api_key="sk-test",
+            openrouter_referer="https://example.com",
+            openrouter_title="Example App",
+        )
+        self.assertEqual("application/json", headers["Content-Type"])
+        self.assertEqual("Bearer sk-test", headers["Authorization"])
+        self.assertEqual("https://example.com", headers["HTTP-Referer"])
+        self.assertEqual("Example App", headers["X-Title"])

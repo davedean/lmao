@@ -6,12 +6,14 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from .debug_log import DebugLogger
 
 
 _TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+|[^\sA-Za-z0-9_]", flags=re.UNICODE)
+
+ProviderName = Literal["lmstudio", "openrouter"]
 
 
 def estimate_tokens(text: str) -> int:
@@ -32,9 +34,41 @@ def estimate_message_tokens(messages: List[Dict[str, str]]) -> int:
 
 def _parse_chat_completion(body: str) -> Tuple[str, Optional[Dict[str, Any]]]:
     parsed = json.loads(body)
-    content = parsed["choices"][0]["message"]["content"]
+    choices = parsed.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise KeyError("choices")
+    first = choices[0] if isinstance(choices[0], dict) else {}
+    message = first.get("message")
+    content: Any = None
+    if isinstance(message, dict):
+        content = message.get("content")
+    if content is None:
+        content = first.get("text", "")
+    if not isinstance(content, str):
+        content = str(content)
     usage = parsed.get("usage")
     return content, usage if isinstance(usage, dict) else None
+
+
+def _build_request_headers(
+    *,
+    provider: ProviderName,
+    api_key: Optional[str],
+    openrouter_referer: Optional[str],
+    openrouter_title: Optional[str],
+) -> Dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if provider == "openrouter":
+        if not api_key:
+            raise ValueError(
+                "OpenRouter API key is required; set OPENROUTER_API_KEY or pass --api-key."
+            )
+        headers["Authorization"] = f"Bearer {api_key}"
+        if openrouter_referer:
+            headers["HTTP-Referer"] = openrouter_referer
+        if openrouter_title:
+            headers["X-Title"] = openrouter_title
+    return headers
 
 
 @dataclass
@@ -56,10 +90,14 @@ class LLMCallResult:
 
 @dataclass
 class LLMClient:
-    """Lightweight client wrapper for LM Studio chat completions."""
+    """Lightweight client wrapper for OpenAI-compatible chat completions."""
 
     endpoint: str
     model: str
+    provider: ProviderName = "lmstudio"
+    api_key: Optional[str] = None
+    openrouter_referer: Optional[str] = None
+    openrouter_title: Optional[str] = None
     temperature: float = 0.2
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
@@ -78,7 +116,13 @@ class LLMClient:
 
         prompt_tokens_est = estimate_message_tokens(messages)
         data = json.dumps(payload).encode("utf-8")
-        req = urllib.request.Request(self.endpoint, data=data, headers={"Content-Type": "application/json"})
+        headers = _build_request_headers(
+            provider=self.provider,
+            api_key=self.api_key,
+            openrouter_referer=self.openrouter_referer,
+            openrouter_title=self.openrouter_title,
+        )
+        req = urllib.request.Request(self.endpoint, data=data, headers=headers)
 
         if self.debug_logger:
             self.debug_logger.log("llm.request", json.dumps(payload, ensure_ascii=False))

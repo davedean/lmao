@@ -15,6 +15,13 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
     --endpoint http://localhost:1234/v1/chat/completions \
     --model qwen3-4b-instruct
   ```
+- OpenRouter (remote) example:
+  ```bash
+  export OPENROUTER_API_KEY="..."
+  python -m lmao "describe this repo" \
+    --provider openrouter \
+    --model openai/gpt-4o-mini
+  ```
 - Or point at a file prompt:
   ```bash
   python -m lmao --prompt-file ./prompt.txt
@@ -42,7 +49,7 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 - Examples: `lmao/tools/demo-plugin/tool.py` echoes the incoming target/args; task tools, git add/commit, and bash also live under `lmao/tools/*`.
 
 ## CLI Flags (excerpt)
-- Core: `--endpoint`, `--model`, `--temperature`, `--top-p`, `--max-tokens`, `--workdir`
+- Core: `--provider`, `--endpoint`, `--model`, `--temperature`, `--top-p`, `--max-tokens`, `--workdir`
 - Safety: `--mode yolo` (opt into risky flows/plugins) or `--mode readonly` (disable writes/moves/git/bash and plugins that opt out of read-only); legacy `--yolo`/`--read-only` remain for compatibility
 - Extensibility: user-specified plugin directories are planned but not yet supported; current runs load the shipped plugins from `lmao/tools/` (inside the installed package).
 - Loop control: `--max-turns`, `--silent-tools`, `--max-tool-lines`, `--max-tool-chars`
@@ -50,7 +57,9 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 - Prompting: `--prompt-file` (seed long prompts), optional interactive prompt when the positional prompt is omitted
 - Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory
 
-Environment defaults: `LM_STUDIO_URL`, `LM_STUDIO_MODEL` populate `--endpoint`/`--model`.
+Environment defaults:
+- LM Studio: `LM_STUDIO_URL`, `LM_STUDIO_MODEL`
+- OpenRouter: `OPENROUTER_API_KEY` (required), optional `OPENROUTER_MODEL`, `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE`
 
 ## Safety Notes
 - Git and bash plugins are available by default but blocked in `--read-only`; they still require a git repo. Bash always asks for confirmation; other plugins can opt in with `always_confirm`.

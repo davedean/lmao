@@ -470,7 +470,16 @@ def run_loop(
 
     user_prompt = format_user_prompt()
     initial_task_list_text = task_manager.render_tasks()
-    messages: List[Dict[str, str]] = [build_system_message(base, yolo_enabled, notes, initial_task_list=initial_task_list_text, read_only=read_only, allowed_tools=allowed_tools, plugins=list(plugins.values()))]
+    messages: List[Dict[str, str]] = [
+        build_system_message(
+            base,
+            notes,
+            initial_task_list=initial_task_list_text,
+            read_only=read_only,
+            allowed_tools=allowed_tools,
+            plugins=list(plugins.values()),
+        )
+    ]
     user_input = initial_prompt
     turn = 1
 

@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 
-from lmao.plugins import PLUGIN_API_VERSION, discover_plugins
+from lmao.plugins import discover_plugins
 from lmao.tools import ToolCall, get_allowed_tools, run_tool
 
 
@@ -187,10 +187,29 @@ class BuiltinPluginTests(TestCase):
         allowed_normal = get_allowed_tools(read_only=False, yolo_enabled=False, plugins=self.plugins.values())
         self.assertIn("git_add", allowed_normal)
         self.assertIn("git_commit", allowed_normal)
+        self.assertIn("git_status", allowed_normal)
+        self.assertIn("git_diff", allowed_normal)
 
         allowed_read_only = get_allowed_tools(read_only=True, yolo_enabled=False, plugins=self.plugins.values())
         self.assertNotIn("git_add", allowed_read_only)
         self.assertNotIn("git_commit", allowed_read_only)
+        self.assertIn("git_status", allowed_read_only)
+        self.assertIn("git_diff", allowed_read_only)
+
+        for name in ("git_status", "git_diff"):
+            call = ToolCall(tool=name, target="", args="")
+            result = run_tool(
+                call,
+                base=self.base,
+                extra_roots=[],
+                skill_roots=[],
+                yolo_enabled=False,
+                read_only=True,
+                plugin_tools=self.plugins,
+            )
+            payload = json.loads(result)
+            self.assertFalse(payload["success"])
+            self.assertIn("not inside a git repository", payload["error"])
 
     def test_all_core_plugins_discovered(self) -> None:
         core_names = {
@@ -209,6 +228,8 @@ class BuiltinPluginTests(TestCase):
             "list_tasks",
             "git_add",
             "git_commit",
+            "git_status",
+            "git_diff",
             "bash",
         }
         self.assertTrue(core_names.issubset(self.plugins.keys()))

@@ -1,5 +1,4 @@
 import json
-import os
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -12,26 +11,26 @@ from lmao.task_list import TaskListManager
 class ToolCallParsingTests(TestCase):
     def test_parses_fenced_json(self) -> None:
         raw = "```json\n{\"tool\": \"read\", \"target\": \"file.txt\", \"args\": \"\"}\n```"
-        call = ToolCall.from_raw_message(raw)
+        call = ToolCall.from_raw_message(raw, allowed_tools=["read"])
         self.assertIsNotNone(call)
         self.assertEqual("read", call.tool)
         self.assertEqual("file.txt", call.target)
 
     def test_rejects_unknown_tool(self) -> None:
         raw = "{\"tool\": \"rm -rf\", \"target\": \"./\", \"args\": \"\"}"
-        call = ToolCall.from_raw_message(raw)
+        call = ToolCall.from_raw_message(raw, allowed_tools=["read", "ls"])
         self.assertIsNone(call)
 
     def test_parses_json_after_text(self) -> None:
         raw = "Let's do this\n{\"tool\": \"ls\", \"target\": \".\", \"args\": \"\"}"
-        call = ToolCall.from_raw_message(raw)
+        call = ToolCall.from_raw_message(raw, allowed_tools=["ls"])
         self.assertIsNotNone(call)
         self.assertEqual("ls", call.tool)
 
     def test_parses_multiple_tool_calls(self) -> None:
         raw = """{"tool":"ls","target":".","args":""}
 {"tool":"find","target":".","args":""}"""
-        calls = parse_tool_calls(raw)
+        calls = parse_tool_calls(raw, allowed_tools=["ls", "find"])
         self.assertEqual(2, len(calls))
         self.assertEqual("ls", calls[0].tool)
         self.assertEqual("find", calls[1].tool)

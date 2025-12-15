@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -27,10 +26,6 @@ There should be sections like '## Instructions' (step-by-step guidance) and '## 
 Constraints:
 - name: <=64 chars, lowercase letters/numbers/hyphens only; no XML tags; not 'anthropic' or 'claude'
 - description: non-empty, <=1024 chars, no XML tags; include what the Skill does and when to use it."""
-
-# When not provided, the allowed tool list should come from discovered plugins;
-# this fallback remains empty to avoid drifting from runtime discovery.
-DEFAULT_ALLOWED_TOOLS: list[str] = []
 
 GENERAL_INTRO_PROMPT = """You are running inside an agentic loop with tools. Act autonomously: plan, use tools, and keep going until the user's request is done. You will be called multiple times, with history of previous calls, so you do not need to resolve the users request in one go. Its preferred that in the first step all you do is create a plan to complete the request. 
 
@@ -64,8 +59,8 @@ SKILL_USAGE_PROMPT = """Skills live under ./skills/<name>/SKILL.md and may also 
 - If you cannot apply the skill after reading, ask one concise clarifying question."""
 
 
-def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_only: bool, plugins: Optional[Sequence[PluginTool]] = None) -> str:
-    resolved = list(allowed_tools) if allowed_tools else list(DEFAULT_ALLOWED_TOOLS)
+def build_tool_prompt(allowed_tools: Sequence[str], read_only: bool) -> str:
+    resolved = list(allowed_tools)
     tool_list = ", ".join(resolved) if resolved else "(no tools discovered)"
     examples_block = "\n".join(
         [
@@ -199,9 +194,8 @@ def gather_context(workdir: Path) -> NotesContext:
     )
 
 
-def build_system_message(workdir: Path, yolo_enabled: bool, notes: NotesContext, initial_task_list: Optional[str] = None, read_only: bool = False, allowed_tools: Optional[Sequence[str]] = None, plugins: Optional[Sequence[PluginTool]] = None) -> Dict[str, str]:
-    resolved_allowed = list(allowed_tools) if allowed_tools is not None else list(DEFAULT_ALLOWED_TOOLS)
-    tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{build_tool_prompt(resolved_allowed, yolo_enabled, read_only, plugins=plugins)}"
+def build_system_message(workdir: Path, notes: NotesContext, initial_task_list: Optional[str] = None, read_only: bool = False, allowed_tools: Sequence[str] = (), plugins: Optional[Sequence[PluginTool]] = None) -> Dict[str, str]:
+    tool_prompt = f"{GENERAL_INTRO_PROMPT}\n\n{build_tool_prompt(list(allowed_tools), read_only)}"
     content = (
         f"{tool_prompt}\n\n{SKILL_USAGE_PROMPT}\n"
         "Reminder: do NOT call any tool just to answer \"what tools are available\"—respond directly. Skills are listed below; do not refresh them unless the user asks.\n"

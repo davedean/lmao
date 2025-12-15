@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 from lmao.plugin_helpers import normalize_path_for_output, parse_line_range, safe_target_path

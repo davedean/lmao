@@ -201,6 +201,7 @@ class BuiltinPluginTests(TestCase):
             "ls",
             "find",
             "grep",
+            "read_agents",
             "list_skills",
             "add_task",
             "complete_task",

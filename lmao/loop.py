@@ -21,20 +21,29 @@ COLOR_GREEN = "\033[92m"
 COLOR_DIM = "\033[2m"
 COLOR_RESET = "\033[0m"
 
+MAX_TOOL_CALLS_PER_TURN = 6
+MAX_DESTRUCTIVE_TOOL_CALLS_PER_TURN = 1
+
 GOVERNANCE_NOTICE_PREFIX = "GOVERNANCE_NOTICE:"
 ACTION_REQUIRED_PREFIX = "ACTION_REQUIRED:"
+LOOP_PREFIX = "LOOP:"
 
 
-def _remove_prefixed_system_messages(messages: List[Dict[str, str]], prefix: str) -> None:
+def _remove_prefixed_messages(messages: List[Dict[str, str]], prefix: str) -> None:
     messages[:] = [
         msg
         for msg in messages
-        if not (msg.get("role") == "system" and str(msg.get("content", "")).startswith(prefix))
+        if not (
+            msg.get("role") in ("system", "user")
+            and str(msg.get("content", "")).startswith(prefix)
+        )
     ]
 
 def _upsert_action_required(messages: List[Dict[str, str]], content: str) -> None:
-    _remove_prefixed_system_messages(messages, ACTION_REQUIRED_PREFIX)
-    messages.append({"role": "system", "content": f"{ACTION_REQUIRED_PREFIX}\n{content}"})
+    # NOTE: Some models (e.g., Qwen3) may not honor system messages after the first response.
+    # Emit loop instructions as role='user' with a distinct prefix so the model still follows them.
+    _remove_prefixed_messages(messages, ACTION_REQUIRED_PREFIX)
+    messages.append({"role": "user", "content": f"{ACTION_REQUIRED_PREFIX}\n{LOOP_PREFIX} {content}"})
 
 
 def _upsert_governance_notice(
@@ -48,7 +57,7 @@ def _upsert_governance_notice(
     This avoids the prompt growing with repeated reminders and helps keep the model un-stuck.
     """
     if not has_incomplete_tasks(task_manager) and gate_violations <= 0:
-        _remove_prefixed_system_messages(messages, GOVERNANCE_NOTICE_PREFIX)
+        _remove_prefixed_messages(messages, GOVERNANCE_NOTICE_PREFIX)
         return
 
     rendered = task_manager.render_tasks()
@@ -72,9 +81,9 @@ def _upsert_governance_notice(
         "- Otherwise, use tool_call steps to add/complete/delete tasks until the list is complete."
         f"{strict_next}"
     )
-    notice = {"role": "system", "content": content}
-    _remove_prefixed_system_messages(messages, GOVERNANCE_NOTICE_PREFIX)
-    messages.append(notice)
+    # Same Qwen3 caveat: send as a user-role instruction with a clear prefix.
+    _remove_prefixed_messages(messages, GOVERNANCE_NOTICE_PREFIX)
+    messages.append({"role": "user", "content": f"{GOVERNANCE_NOTICE_PREFIX}\n{LOOP_PREFIX} {content}"})
 
 
 def _truncate_preview(text: str, max_lines: int = 4, max_chars: int = 400) -> str:
@@ -114,6 +123,8 @@ def run_agent_turn(
     invalid_replies = 0
     gate_violations = 0
     think_only_turns = 0
+    pending_withheld_message: Optional[str] = None
+    need_user_update = False
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
@@ -194,9 +205,9 @@ def run_agent_turn(
 
             messages.append(
                 {
-                    "role": "system",
+                    "role": "user",
                     "content": (
-                        "Your reply was not valid for the required JSON assistant protocol.\n"
+                        f"{LOOP_PREFIX} Your reply was not valid for the required JSON assistant protocol.\n"
                         f"Error: {exc}\n"
                         "Return ONLY a single JSON object matching:\n"
                         '{"type":"assistant_turn","version":"1","steps":[...]}\n'
@@ -208,7 +219,7 @@ def run_agent_turn(
             continue
 
         # Recovery prompts are only for the immediate next attempt; remove them once we get a valid turn.
-        _remove_prefixed_system_messages(messages, ACTION_REQUIRED_PREFIX)
+        _remove_prefixed_messages(messages, ACTION_REQUIRED_PREFIX)
 
         label_color = COLOR_BLUE
         thinks, user_messages, has_end = collect_steps(turn_obj.steps)
@@ -226,12 +237,18 @@ def run_agent_turn(
         if user_messages and should_render_user_messages(task_manager, user_messages):
             combined = "\n\n".join(step.content for step in user_messages)
             print(f"{combined}\n")
+            # Once we have shown any message to the user, clear any previously withheld message requirement.
+            # (The model may rephrase; we mainly want to avoid it thinking the user saw withheld output.)
+            pending_withheld_message = None
+            need_user_update = False
         elif tool_call_payloads:
             tools = ", ".join(call.tool for call in tool_call_payloads)
             print(f"{COLOR_DIM}(requesting tool(s): {tools}){COLOR_RESET}\n")
         elif user_messages:
             # Withhold user-visible content until tasks are complete (unless clarification/cannot_finish).
             combined = "\n\n".join(step.content for step in user_messages)
+            pending_withheld_message = combined
+            need_user_update = True
             preview = _truncate_preview(combined, max_lines=6, max_chars=600)
             print(f"{COLOR_DIM}(withheld message until task list is complete; preview)\n{preview}{COLOR_RESET}\n")
         else:
@@ -278,6 +295,41 @@ def run_agent_turn(
             continue
 
         if tool_call_payloads:
+            if len(tool_call_payloads) > MAX_TOOL_CALLS_PER_TURN:
+                calls_preview = ", ".join(call.tool for call in tool_call_payloads[:MAX_TOOL_CALLS_PER_TURN])
+                _upsert_action_required(
+                    messages,
+                    (
+                        f"Too many tool calls in one reply ({len(tool_call_payloads)}). Limit is {MAX_TOOL_CALLS_PER_TURN}.\n"
+                        "Split the work across multiple assistant_turn replies.\n"
+                        f"First {MAX_TOOL_CALLS_PER_TURN} tools requested: {calls_preview}\n"
+                        "Return ONLY a single JSON object matching the assistant protocol."
+                    ),
+                )
+                current_turn += 1
+                continue
+
+            destructive = 0
+            for call in tool_call_payloads:
+                plugin = plugin_tools.get(call.tool)
+                if plugin is None:
+                    destructive += 1
+                elif plugin.is_destructive:
+                    destructive += 1
+            if destructive > MAX_DESTRUCTIVE_TOOL_CALLS_PER_TURN:
+                tools_list = ", ".join(call.tool for call in tool_call_payloads)
+                _upsert_action_required(
+                    messages,
+                    (
+                        f"Too many destructive tool calls in one reply ({destructive}). Limit is {MAX_DESTRUCTIVE_TOOL_CALLS_PER_TURN}.\n"
+                        "Split destructive actions across multiple replies.\n"
+                        f"Tools requested: {tools_list}\n"
+                        "Return ONLY a single JSON object matching the assistant protocol."
+                    ),
+                )
+                current_turn += 1
+                continue
+
             for call in tool_call_payloads:
                 tool_call = ToolCall(tool=call.tool, target=call.target, args=call.args)
                 if debug_logger:
@@ -317,10 +369,29 @@ def run_agent_turn(
                         ),
                     }
                 )
+                # The user hasn't necessarily seen the implications of this tool result yet.
+                need_user_update = True
                 current_turn += 1
             continue
 
         if has_end:
+            if pending_withheld_message is not None or need_user_update:
+                rendered = task_manager.render_tasks()
+                preview = _truncate_preview(pending_withheld_message or "", max_lines=12, max_chars=900)
+                extra = ""
+                if pending_withheld_message:
+                    extra = f"\n\nWithheld message preview (resend or rephrase):\n{preview}"
+                _upsert_action_required(
+                    messages,
+                    (
+                        "You emitted an end step, but the human user has not received a final visible summary of what happened.\n"
+                        "Do NOT end yet. Send a message step now (prefer purpose='final') summarizing results, then end.\n\n"
+                        f"Current task list:\n{rendered}"
+                        f"{extra}"
+                    ),
+                )
+                current_turn += 1
+                continue
             if not can_end_conversation(task_manager, user_messages):
                 gate_violations += 1
                 current_turn += 1
@@ -328,6 +399,20 @@ def run_agent_turn(
             return current_turn + 1, last_stats, True
 
         if user_messages and has_incomplete_tasks(task_manager) and not should_render_user_messages(task_manager, user_messages):
+            combined = "\n\n".join(step.content for step in user_messages)
+            preview = _truncate_preview(combined, max_lines=12, max_chars=900)
+            rendered = task_manager.render_tasks()
+            _upsert_action_required(
+                messages,
+                (
+                    "Your previous message was NOT shown to the human user because the task list is incomplete.\n"
+                    "Do not assume the user saw it. First, complete the outstanding tasks using tool calls.\n"
+                    "After the task list is complete, resend the message to the user (prefer purpose='final').\n\n"
+                    f"Current task list:\n{rendered}\n\n"
+                    "Withheld message preview (for you to resend later):\n"
+                    f"{preview}"
+                ),
+            )
             gate_violations += 1
             current_turn += 1
             continue

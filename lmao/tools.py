@@ -175,7 +175,12 @@ def load_candidate(text: str) -> Optional[Union[Dict[str, Any], List[Any]]]:
 
 
 def safe_target_path(target: str, base: Path, extra_roots: Sequence[Path]) -> Path:
-    raw_path = Path(target).expanduser()
+    target_str = str(target or "").strip()
+    # Model ergonomics: treat "/" as "repo root" (the working directory base), not filesystem root.
+    if target_str in ("/", "\\"):
+        raw_path = Path(".")
+    else:
+        raw_path = Path(target).expanduser()
     target_path = raw_path.resolve() if raw_path.is_absolute() else (base / raw_path).resolve()
 
     allowed_roots = [base] + [p.resolve() for p in extra_roots]

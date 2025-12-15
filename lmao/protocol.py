@@ -149,7 +149,6 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
 
     raw_steps = _require_list(obj.get("steps"), "assistant_turn.steps")
     steps: List[Step] = []
-    non_task_tool_calls = 0
     for idx, raw_step in enumerate(raw_steps):
         step_obj = _require_dict(raw_step, f"steps[{idx}]")
         step_type = _require_str(step_obj.get("type", ""), f"steps[{idx}].type")
@@ -179,10 +178,6 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
             target = str(call_obj.get("target", "") or "")
             args = _coerce_args(call_obj.get("args", ""))
             steps.append(ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args)))
-            if tool not in TASK_TOOL_NAMES:
-                non_task_tool_calls += 1
-                if non_task_tool_calls > 1:
-                    raise ProtocolError("only one non-task tool_call is allowed per reply")
             continue
 
         if step_type == "end":

@@ -22,6 +22,7 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 
 ## Behavior & Tools
 - Default tools: `read`, `write`, `mkdir`, `move`, `ls`, `find`, `grep`, `list_skills`, plus task-list helpers (`add_task`, `complete_task`, `delete_task`, `list_tasks`). Git tools (`git_add`, `git_commit`) ship as plugins under `lmao/tools/git-*` and are available in normal/yolo modes (blocked in `--mode readonly`). Tool outputs are JSON (`success` + `data`/`error`) to keep paths with spaces unambiguous.
+- Repo instructions (AGENTS): the loop discovers the nearest `AGENTS.md` path but does not preload its contents; call `read_agents` if the model needs the repo instructions.
 - Assistant protocol: the model must respond with a single JSON object each turn (`{"type":"assistant_turn","version":"1","steps":[...]}`), with step types `think`, `tool_call`, `message`, and `end`. The loop retries if the JSON is invalid and blocks `end` until the task list is complete.
 - Optional tool: `bash` ships as a plugin and prompts for confirmation on every command; it is available unless read-only mode is set.
 - Read-only mode: pass `--mode readonly` (or legacy `--read-only`) to disable destructive tools (`write`, `mkdir`, `move`) and any plugin that opts out of read-only (git/bash by default) for inspection-only runs.

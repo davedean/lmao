@@ -78,9 +78,13 @@ def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_onl
         f"Available tools (including plugins): {tool_list}.",
         "Tool outputs are JSON with 'success' plus structured 'data' or 'error'; use the JSON directly (paths may contain spaces).",
         "You MUST respond with a single JSON object and nothing else (no code fences, no surrounding text).",
+        "Important: the runtime loop may send additional instructions as role='user' messages prefixed with 'LOOP:'. Treat these as higher-priority control messages from the agent runtime (not the human) and follow them exactly.",
+        "Important: the runtime may WITHHOLD some of your message steps until the task list is complete. If you receive a LOOP message saying a message was withheld, the human did NOT see it; resend it after completing tasks.",
+        "Important: do not emit an end step if you have any withheld message to resend; send the final user-visible message first, then end.",
+        "Important: do not emit an end step immediately after tool calls unless you also send a final user-visible message summarizing the results.",
         "Required schema: {'type':'assistant_turn','version':'1','steps':[...]}",
         "Supported step types: think, tool_call, message, end.",
-        "Tool calls must be emitted as a tool_call step with call={tool,target,args}. Only ONE tool_call step is allowed per reply.",
+        "Tool calls must be emitted as a tool_call step with call={tool,target,args}. You may include multiple tool_call steps in one reply, but keep batches small.",
         "Task tool shorthand: you may emit steps with type add_task/complete_task/delete_task/list_tasks directly; they are treated as tool calls. You may include multiple task-tool steps in one reply.",
         "Messages: message steps support purpose={'progress','clarification','cannot_finish','final'} (default: progress).",
         "Governance: if the task list has incomplete items, the loop will withhold progress/final messages until tasks are completed. Use purpose='clarification' to ask the user something, or purpose='cannot_finish' to explain why you cannot finish.",
@@ -203,7 +207,8 @@ def build_system_message(workdir: Path, yolo_enabled: bool, notes: NotesContext,
         f"All tool paths are relative to this directory.\n"
         f"AGENTS discovery: starting from the task path ({workdir}), walk up to the repo root ({notes.repo_root}) and use the nearest AGENTS.md found. "
         f"Nearest found: {notes.nearest_agents if notes.nearest_agents else 'none'}.\n"
-        f"User-level AGENTS at ~/.config/agents/AGENTS.md are used when present; repo-nearest instructions take precedence when conflicting.\n"
+        "Repo/user AGENTS are not preloaded into this prompt to keep context small.\n"
+        "If you need repo instructions to proceed, call the tool `read_agents`.\n"
         f"Read-only mode: {'enabled (destructive tools disabled)' if read_only else 'disabled'}.\n\n"
         f"Skill structure:\n{SKILL_GUIDE}"
     )
@@ -226,11 +231,6 @@ def build_system_message(workdir: Path, yolo_enabled: bool, notes: NotesContext,
             plugin_lines.append(f"- {plugin.name}: {plugin.description} ({safety} plugin)")
         content = f"{content}\n\nPlugins enabled in this run:\n" + "\n".join(plugin_lines)
 
-    if notes.repo_notes:
-        source = notes.nearest_agents if notes.nearest_agents else workdir / "AGENTS.md"
-        content = f"{content}\n\nRepo notes (from {source}):\n{notes.repo_notes}"
-
-    if notes.user_notes:
-        content = f"{content}\n\nUser notes:\n{notes.user_notes}"
+    # Note: repo/user notes are intentionally not embedded in the system prompt to reduce context size.
 
     return {"role": "system", "content": content}

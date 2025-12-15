@@ -44,8 +44,8 @@ class ProtocolParsingTests(TestCase):
                 ],
             }
         )
-        with self.assertRaises(ProtocolError):
-            parse_assistant_turn(raw, allowed_tools=["read"])
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual(2, len(turn.steps))
 
     def test_rejects_disallowed_tool(self) -> None:
         raw = json.dumps(

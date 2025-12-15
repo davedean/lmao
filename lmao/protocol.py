@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 
 PROTOCOL_VERSION = "1"
 TASK_TOOL_NAMES = {"add_task", "complete_task", "delete_task", "list_tasks"}
+_FENCED_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)```", flags=re.DOTALL | re.IGNORECASE)
 
 
 class ProtocolError(ValueError):
@@ -81,6 +83,50 @@ def _coerce_args(value: Any) -> str:
         return value
     return json.dumps(value, ensure_ascii=False)
 
+
+def _extract_fenced_blocks(raw_text: str) -> List[str]:
+    blocks = []
+    for match in _FENCED_BLOCK_RE.findall(raw_text):
+        cleaned = match.strip()
+        if cleaned:
+            blocks.append(cleaned)
+    return blocks
+
+
+def _extract_braced_objects(raw_text: str) -> List[str]:
+    """Extract top-level brace-delimited JSON-ish substrings."""
+    objs: List[str] = []
+    depth = 0
+    start: Optional[int] = None
+    for idx, ch in enumerate(raw_text):
+        if ch == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+        elif ch == "}":
+            if depth:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    objs.append(raw_text[start : idx + 1].strip())
+                    start = None
+    return objs
+
+
+def _iter_jsonish_text_candidates(raw_text: str) -> Iterator[str]:
+    stripped = raw_text.strip()
+    candidates: List[str] = []
+    candidates.extend(_extract_fenced_blocks(raw_text))
+    candidates.extend(_extract_braced_objects(raw_text))
+    if stripped:
+        candidates.append(stripped)
+    seen = set()
+    for cand in candidates:
+        if cand in seen:
+            continue
+        seen.add(cand)
+        yield cand
+
+
 def _extract_json_prefix_on_extra_data(raw_text: str) -> Optional[dict]:
     """
     Best-effort recovery for model outputs that accidentally concatenate multiple JSON objects.
@@ -102,23 +148,38 @@ def _extract_json_prefix_on_extra_data(raw_text: str) -> Optional[dict]:
             return None
 
 
-def _load_jsonish_dict(raw_text: str) -> Dict[str, Any]:
+def _try_load_jsonish_dict(raw_text: str) -> Optional[Dict[str, Any]]:
+    cleaned = raw_text.strip()
+    if not cleaned:
+        return None
     try:
-        obj = json.loads(raw_text)
-        if not isinstance(obj, dict):
-            raise ProtocolError("assistant_turn must be an object")
-        return obj
-    except Exception as exc:
-        recovered = _extract_json_prefix_on_extra_data(raw_text)
+        obj = json.loads(cleaned)
+        return obj if isinstance(obj, dict) else None
+    except json.JSONDecodeError:
+        recovered = _extract_json_prefix_on_extra_data(cleaned)
         if recovered is not None:
             return recovered
-        try:
-            literal = ast.literal_eval(raw_text.strip())
-            if isinstance(literal, dict):
-                return literal
-        except Exception:
-            pass
-        raise ProtocolError(f"invalid JSON: {exc}") from exc
+    except Exception:
+        return None
+    try:
+        literal = ast.literal_eval(cleaned)
+        return literal if isinstance(literal, dict) else None
+    except Exception:
+        return None
+
+
+def _load_jsonish_dict(raw_text: str) -> Dict[str, Any]:
+    last_error: Optional[Exception] = None
+    for candidate in _iter_jsonish_text_candidates(raw_text):
+        loaded = _try_load_jsonish_dict(candidate)
+        if loaded is not None:
+            return loaded
+    try:
+        json.loads(raw_text)
+        raise ProtocolError("assistant_turn must be an object")
+    except Exception as exc:
+        last_error = exc
+    raise ProtocolError(f"invalid JSON: {last_error}") from last_error
 
 
 def _wrap_single_step(obj: Dict[str, Any]) -> Dict[str, Any]:
@@ -155,7 +216,21 @@ def _parse_task_tool_alias_step(step_obj: Dict[str, Any], allowed_tools: Sequenc
 
 
 def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> AssistantTurn:
-    obj = _load_jsonish_dict(raw_text)
+    acceptable_types = {"assistant_turn", "think", "tool_call", "message", "end"}
+    obj: Optional[Dict[str, Any]] = None
+    first_loaded: Optional[Dict[str, Any]] = None
+    for candidate in _iter_jsonish_text_candidates(raw_text):
+        loaded = _try_load_jsonish_dict(candidate)
+        if loaded is None:
+            continue
+        if first_loaded is None:
+            first_loaded = loaded
+        step_type = loaded.get("type")
+        if step_type in acceptable_types:
+            obj = loaded
+            break
+    if obj is None:
+        obj = first_loaded if first_loaded is not None else _load_jsonish_dict(raw_text)
     if obj.get("type") != "assistant_turn":
         # Back-compat / model convenience: accept a single step dict and wrap it.
         if obj.get("type") in {"think", "tool_call", "message", "end"}:

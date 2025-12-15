@@ -21,6 +21,9 @@ def safe_target_path(target: str, base: Path, extra_roots: Sequence[Path]) -> Pa
     # Model ergonomics: treat "/" as "repo root" (the working directory base), not filesystem root.
     if target_str in ("/", "\\"):
         raw_path = Path(".")
+    # Model ergonomics: treat "/foo/bar" as repo-root-relative (base/foo/bar), not filesystem absolute.
+    elif target_str.startswith(("/", "\\")):
+        raw_path = Path(target_str.lstrip("/\\"))
     else:
         raw_path = Path(target).expanduser()
     target_path = raw_path.resolve() if raw_path.is_absolute() else (base / raw_path).resolve()
@@ -46,4 +49,3 @@ def parse_line_range(arg: str) -> Optional[Tuple[int, int]]:
     if end < start:
         end = start
     return start, end
-

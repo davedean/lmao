@@ -11,6 +11,7 @@ def build_tool_prompt(allowed_tools: Sequence[str], read_only: bool) -> str:
     prompt_lines = [
         "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
         "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"1\",\"steps\":[...]}",
+        "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
         "Steps: think | tool_call | message | end. Tool outputs are JSON with success + data/error.",
         "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
         "Task list discipline: create a plan first (use add_task/list_tasks), keep tasks updated, and only send final/progress user messages after tasks are complete; use purpose='clarification' to ask the user a question.",

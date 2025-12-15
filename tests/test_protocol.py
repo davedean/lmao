@@ -22,6 +22,36 @@ class ProtocolParsingTests(TestCase):
         self.assertEqual("1", turn.version)
         self.assertEqual(3, len(turn.steps))
 
+    def test_accepts_fenced_json(self) -> None:
+        raw_obj = {
+            "type": "assistant_turn",
+            "version": "1",
+            "steps": [{"type": "message", "content": "hi"}],
+        }
+        raw = f"```json\n{json.dumps(raw_obj)}\n```"
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("assistant_turn", turn.type)
+
+    def test_accepts_preamble_text_then_json(self) -> None:
+        raw_obj = {
+            "type": "assistant_turn",
+            "version": "1",
+            "steps": [{"type": "message", "content": "hi"}],
+        }
+        raw = f"Sure, here you go:\n{json.dumps(raw_obj)}"
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("assistant_turn", turn.type)
+
+    def test_skips_non_protocol_json_before_assistant_turn(self) -> None:
+        raw_obj = {
+            "type": "assistant_turn",
+            "version": "1",
+            "steps": [{"type": "message", "content": "hi"}],
+        }
+        raw = f'{{"foo": 1}}\n{json.dumps(raw_obj)}'
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("assistant_turn", turn.type)
+
     def test_rejects_invalid_message_purpose(self) -> None:
         raw = json.dumps(
             {

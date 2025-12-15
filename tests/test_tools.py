@@ -54,6 +54,14 @@ class ToolSafetyTests(TestCase):
         resolved = safe_target_path("/", self.base, extra_roots=[])
         self.assertEqual(self.base, resolved)
 
+    def test_safe_target_path_allows_repo_root_prefixed_paths(self) -> None:
+        resolved = safe_target_path("/skills", self.base, extra_roots=[])
+        self.assertEqual(self.base / "skills", resolved)
+
+    def test_safe_target_path_blocks_escape_even_with_leading_slash(self) -> None:
+        with self.assertRaises(ValueError):
+            safe_target_path("/../outside", self.base, extra_roots=[])
+
     def test_run_tool_read_with_line_range(self) -> None:
         target = self.base / "notes.txt"
         target.write_text("a\nb\nc\nd\n", encoding="utf-8")

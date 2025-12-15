@@ -27,7 +27,7 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 - Read-only mode: pass `--mode readonly` (or legacy `--read-only`) to disable destructive tools (`write`, `mkdir`, `move`) and any plugin that opts out of read-only (git/bash by default) for inspection-only runs.
 - Pluggable tools: shipped plugins under `lmao/tools` are loaded automatically (see `lmao/tools/demo-plugin/tool.py` for a minimal echo example). Additional plugin directories are not yet supported via CLI.
 - Path safety: all tool paths are constrained to the working directory. User skill folders under `~/.config/agents/skills` are also allowed when present.
-- Task lists: each run starts with an active list (seeded with “create a plan to respond”). The agent is expected to keep the list in sync while it works instead of pausing for confirmation.
+- Task lists: each run starts with an active list (empty by default). If the model adds tasks, it is expected to keep the list in sync while it works instead of pausing for confirmation.
 
 ## Skills & AGENTS
 - Skills live in `skills/<skill-name>/SKILL.md` with YAML frontmatter; supporting files stay in the same folder. User-specific skills can live in `~/.config/agents/skills/<skill-name>/SKILL.md`.

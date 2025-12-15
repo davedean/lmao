@@ -119,8 +119,7 @@ class ToolSafetyTests(TestCase):
         list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         list_payload = json.loads(list_out)
         self.assertTrue(list_payload["success"])
-        self.assertIn("[ ] 1 create a plan to respond", list_payload["data"]["render"])
-        self.assertIn("[ ] 2 do something", list_payload["data"]["render"])
+        self.assertIn("[ ] 1 do something", list_payload["data"]["render"])
 
         complete_out = run_tool(complete, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         complete_payload = json.loads(complete_out)
@@ -129,7 +128,7 @@ class ToolSafetyTests(TestCase):
         list_out_done = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         list_payload_done = json.loads(list_out_done)
         self.assertTrue(list_payload_done["success"])
-        self.assertIn("[x] 1 create a plan to respond", list_payload_done["data"]["render"])
+        self.assertIn("[x] 1 do something", list_payload_done["data"]["render"])
 
     def test_task_tools_accept_target_as_payload(self) -> None:
         manager = TaskListManager()
@@ -162,7 +161,7 @@ class ToolSafetyTests(TestCase):
         list_call = ToolCall(tool="list_tasks", target="", args="")
         list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
         list_payload = json.loads(list_out)
-        self.assertIn("[ ] 2 do something multiline", list_payload["data"]["render"])
+        self.assertIn("[ ] 1 do something multiline", list_payload["data"]["render"])
 
     def test_read_only_blocks_destructive_tools(self) -> None:
         target = self.base / "notes.txt"

@@ -5,8 +5,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
+from .governance import (
+    can_end_conversation,
+    has_incomplete_tasks,
+    should_render_user_messages,
+)
 from .llm import LLMCallStats, LLMClient
-from .protocol import ProtocolError, collect_steps, find_first_tool_call, parse_assistant_turn
+from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
 from .task_list import TaskListManager
 from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
@@ -15,6 +20,74 @@ COLOR_BLUE = "\033[94m"
 COLOR_GREEN = "\033[92m"
 COLOR_DIM = "\033[2m"
 COLOR_RESET = "\033[0m"
+
+GOVERNANCE_NOTICE_PREFIX = "GOVERNANCE_NOTICE:"
+ACTION_REQUIRED_PREFIX = "ACTION_REQUIRED:"
+
+
+def _remove_prefixed_system_messages(messages: List[Dict[str, str]], prefix: str) -> None:
+    messages[:] = [
+        msg
+        for msg in messages
+        if not (msg.get("role") == "system" and str(msg.get("content", "")).startswith(prefix))
+    ]
+
+def _upsert_action_required(messages: List[Dict[str, str]], content: str) -> None:
+    _remove_prefixed_system_messages(messages, ACTION_REQUIRED_PREFIX)
+    messages.append({"role": "system", "content": f"{ACTION_REQUIRED_PREFIX}\n{content}"})
+
+
+def _upsert_governance_notice(
+    messages: List[Dict[str, str]],
+    task_manager: TaskListManager,
+    gate_violations: int,
+) -> None:
+    """
+    Keep a single up-to-date governance notice at the end of the message history.
+
+    This avoids the prompt growing with repeated reminders and helps keep the model un-stuck.
+    """
+    if not has_incomplete_tasks(task_manager) and gate_violations <= 0:
+        _remove_prefixed_system_messages(messages, GOVERNANCE_NOTICE_PREFIX)
+        return
+
+    rendered = task_manager.render_tasks()
+    strict_next = ""
+    if gate_violations > 0:
+        first_incomplete = next((t for t in task_manager.tasks if not t.done), None)
+        if first_incomplete:
+            strict_next = (
+                "\nExample next step (valid JSON):\n"
+                '{"type":"assistant_turn","version":"1","steps":[{"type":"tool_call","call":{"tool":"complete_task","target":"","args":"'
+                + str(first_incomplete.id)
+                + '"}}]}'
+            )
+    content = (
+        f"{GOVERNANCE_NOTICE_PREFIX}\n"
+        f"Current task list:\n{rendered}\n\n"
+        "Rules:\n"
+        "- Do not send message steps with purpose 'progress' or 'final' until all tasks are complete.\n"
+        "- If you need user input, send a message step with purpose 'clarification'.\n"
+        "- If you cannot finish, send a message step with purpose 'cannot_finish' (and you may end).\n"
+        "- Otherwise, use tool_call steps to add/complete/delete tasks until the list is complete."
+        f"{strict_next}"
+    )
+    notice = {"role": "system", "content": content}
+    _remove_prefixed_system_messages(messages, GOVERNANCE_NOTICE_PREFIX)
+    messages.append(notice)
+
+
+def _truncate_preview(text: str, max_lines: int = 4, max_chars: int = 400) -> str:
+    if not text:
+        return ""
+    lines = text.splitlines() or [text]
+    head = lines[:max_lines]
+    preview = "\n".join(head)
+    if len(lines) > max_lines:
+        preview += "\n...[truncated]"
+    if len(preview) > max_chars:
+        preview = preview[:max_chars] + "\n...[truncated]"
+    return preview
 
 def run_agent_turn(
     messages: List[Dict[str, str]],
@@ -39,11 +112,14 @@ def run_agent_turn(
     last_stats: Optional[LLMCallStats] = None
     current_turn = turn
     invalid_replies = 0
+    gate_violations = 0
+    think_only_turns = 0
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
 
     while True:
+        _upsert_governance_notice(messages, task_manager, gate_violations)
         result = client.call(messages)
         assistant_reply = result.content
         last_stats = result.stats
@@ -62,7 +138,7 @@ def run_agent_turn(
 
         if not assistant_reply or not assistant_reply.strip():
             empty_replies += 1
-            if empty_replies >= 2:
+            if empty_replies >= 4:
                 fallback = last_tool_summary or "No tool output available."
                 assistant_reply = (
                     f"(auto-generated fallback) Unable to get a response from the model. "
@@ -71,7 +147,27 @@ def run_agent_turn(
                 print(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{assistant_reply}\n")
                 messages.append({"role": "assistant", "content": assistant_reply})
                 return current_turn + 1, last_stats, False
-            messages.append({"role": "system", "content": f"Your last reply was empty. The user asked: {last_user!r}. Continue the conversation now using the latest tool results and reply to the user."})
+            rendered = task_manager.render_tasks()
+            next_json = (
+                '{"type":"assistant_turn","version":"1","steps":['
+                '{"type":"add_task","args":{"task":"list files in the repo (ls .)"}},'
+                '{"type":"add_task","args":{"task":"inspect three different files (read ...)"}},'
+                '{"type":"add_task","args":{"task":"summarize findings and report"}},'
+                '{"type":"list_tasks"}'
+                "]}"
+            )
+            _upsert_action_required(
+                messages,
+                (
+                    "Your last reply was empty (or whitespace). This is not allowed.\n"
+                    f"The user asked: {last_user!r}.\n"
+                    "Return ONLY a single JSON object matching the assistant protocol.\n"
+                    "Do NOT return whitespace.\n\n"
+                    f"Current task list:\n{rendered}\n\n"
+                    "If you need to proceed, add tasks and list them (example JSON to copy):\n"
+                    f"{next_json}"
+                ),
+            )
             current_turn += 1
             continue
 
@@ -111,88 +207,130 @@ def run_agent_turn(
             current_turn += 1
             continue
 
+        # Recovery prompts are only for the immediate next attempt; remove them once we get a valid turn.
+        _remove_prefixed_system_messages(messages, ACTION_REQUIRED_PREFIX)
+
         label_color = COLOR_BLUE
         thinks, user_messages, has_end = collect_steps(turn_obj.steps)
-        tool_call_payload = find_first_tool_call(turn_obj.steps)
+        tool_call_payloads = collect_tool_calls(turn_obj.steps)
 
         if debug_logger:
             step_summary = ",".join(step.type for step in turn_obj.steps) if turn_obj.steps else "(no steps)"
             print(f"{COLOR_DIM}[protocol] ok steps={step_summary}{COLOR_RESET}")
 
         print(f"\n{label_color}[assistant #{current_turn}]{COLOR_RESET}")
-        if debug_logger and thinks:
-            for step in thinks:
-                print(f"{COLOR_DIM}{step.content}{COLOR_RESET}")
-        if user_messages:
+        if thinks:
+            think_preview = _truncate_preview("\n\n".join(step.content for step in thinks), max_lines=3, max_chars=240)
+            if think_preview:
+                print(f"{COLOR_DIM}(think preview)\n{think_preview}{COLOR_RESET}")
+        if user_messages and should_render_user_messages(task_manager, user_messages):
             combined = "\n\n".join(step.content for step in user_messages)
             print(f"{combined}\n")
-        elif tool_call_payload is not None:
-            print(f"{COLOR_DIM}(requesting tool: {tool_call_payload.tool}){COLOR_RESET}\n")
+        elif tool_call_payloads:
+            tools = ", ".join(call.tool for call in tool_call_payloads)
+            print(f"{COLOR_DIM}(requesting tool(s): {tools}){COLOR_RESET}\n")
+        elif user_messages:
+            # Withhold user-visible content until tasks are complete (unless clarification/cannot_finish).
+            combined = "\n\n".join(step.content for step in user_messages)
+            preview = _truncate_preview(combined, max_lines=6, max_chars=600)
+            print(f"{COLOR_DIM}(withheld message until task list is complete; preview)\n{preview}{COLOR_RESET}\n")
         else:
             print()
 
         # Preserve protocol conversation history for the model by storing the JSON turn verbatim.
         messages.append({"role": "assistant", "content": assistant_reply})
 
-        if tool_call_payload is not None:
-            tool_call = ToolCall(tool=tool_call_payload.tool, target=tool_call_payload.target, args=tool_call_payload.args)
-            if debug_logger:
-                debug_logger.log(
-                    "tool.call",
-                    f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r}",
-                )
-            output = run_tool(
-                tool_call,
-                base,
-                extra_roots,
-                skill_roots,
-                yolo_enabled,
-                read_only=read_only,
-                plugin_tools=plugin_tools,
-                task_manager=task_manager,
-                debug_logger=debug_logger,
+        if thinks and not user_messages and not tool_call_payloads and not has_end:
+            think_only_turns += 1
+            rendered = task_manager.render_tasks()
+            next_json = (
+                '{"type":"assistant_turn","version":"1","steps":['
+                '{"type":"add_task","args":{"task":"list files in the repo (ls .)"}},'
+                '{"type":"add_task","args":{"task":"inspect three different files (read ...)"}},'
+                '{"type":"add_task","args":{"task":"summarize findings and report"}},'
+                '{"type":"list_tasks"}'
+                "]}"
             )
-            tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
-            last_tool_summary = summarize_output(output, max_lines=max_tool_output[0], max_chars=max_tool_output[1])
-            if max_tool_output[1] > 0:
-                tool_result_body = indent(f"[tool result] {tool_desc}\n{last_tool_summary}")
-                print(f"{COLOR_DIM}{tool_result_body}{COLOR_RESET}\n")
-
-            if debug_logger:
-                debug_logger.log(
-                    "tool.output",
-                    f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} output={output}",
-                )
-            messages.append(
-                {
-                    "role": "user",
-                    "content": (
-                        f"Tool result for {tool_desc}:\n{output}\n"
-                        f"Use this to continue helping the user (request: {last_user!r}). "
-                        "If another tool is needed, call it; otherwise reply to the user now."
+            if think_only_turns > 3:
+                _upsert_action_required(
+                    messages,
+                    (
+                        "You have emitted multiple think-only turns. This is not allowed.\n"
+                        "Next, emit either tool_call steps or message/end steps.\n\n"
+                        f"Current task list:\n{rendered}\n\n"
+                        "Return ONLY a single JSON object matching the assistant protocol.\n"
+                        "If you are unsure what to do next, add tasks and list them (example JSON to copy):\n"
+                        f"{next_json}"
                     ),
-                }
-            )
+                )
+            else:
+                _upsert_action_required(
+                    messages,
+                    (
+                        "You produced only think steps. Continue immediately with the next action.\n\n"
+                        f"Current task list:\n{rendered}\n\n"
+                        "Return ONLY a single JSON object matching the assistant protocol.\n"
+                        "Next, add tasks and list them (example JSON to copy):\n"
+                        f"{next_json}"
+                    ),
+                )
             current_turn += 1
             continue
 
-        if has_end:
-            remaining = [t for t in task_manager.tasks if not t.done]
-            if remaining:
-                rendered = task_manager.render_tasks()
+        if tool_call_payloads:
+            for call in tool_call_payloads:
+                tool_call = ToolCall(tool=call.tool, target=call.target, args=call.args)
+                if debug_logger:
+                    debug_logger.log(
+                        "tool.call",
+                        f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r}",
+                    )
+                output = run_tool(
+                    tool_call,
+                    base,
+                    extra_roots,
+                    skill_roots,
+                    yolo_enabled,
+                    read_only=read_only,
+                    plugin_tools=plugin_tools,
+                    task_manager=task_manager,
+                    debug_logger=debug_logger,
+                )
+                tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
+                last_tool_summary = summarize_output(output, max_lines=max_tool_output[0], max_chars=max_tool_output[1])
+                if max_tool_output[1] > 0:
+                    tool_result_body = indent(f"[tool result] {tool_desc}\n{last_tool_summary}")
+                    print(f"{COLOR_DIM}{tool_result_body}{COLOR_RESET}\n")
+
+                if debug_logger:
+                    debug_logger.log(
+                        "tool.output",
+                        f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} output={output}",
+                    )
                 messages.append(
                     {
-                        "role": "system",
+                        "role": "user",
                         "content": (
-                            "You attempted to end the conversation, but the task list still has incomplete items.\n"
-                            "Use tool_call steps to complete/delete/add tasks until it is complete, then emit an end step.\n\n"
-                            f"Current task list:\n{rendered}"
+                            f"Tool result for {tool_desc}:\n{output}\n"
+                            f"Use this to continue helping the user (request: {last_user!r}). "
+                            "If another tool is needed, call it; otherwise reply to the user now."
                         ),
                     }
                 )
                 current_turn += 1
+            continue
+
+        if has_end:
+            if not can_end_conversation(task_manager, user_messages):
+                gate_violations += 1
+                current_turn += 1
                 continue
             return current_turn + 1, last_stats, True
+
+        if user_messages and has_incomplete_tasks(task_manager) and not should_render_user_messages(task_manager, user_messages):
+            gate_violations += 1
+            current_turn += 1
+            continue
 
         return current_turn + 1, last_stats, False
 
@@ -217,8 +355,8 @@ def run_loop(
         debug_logger.log("context", f"workdir={base} yolo_enabled={yolo_enabled} read_only={read_only}")
 
     notes = gather_context(base)
-    # Seed a default task list so the model starts with a plan step (task list always exists)
-    task_manager.new_list(seed_plan=True)
+    # Ensure an active task list exists (may be empty).
+    task_manager.new_list()
 
     extra_roots: List[Path] = []
     skill_roots: List[Path] = [base / "skills"]

@@ -45,7 +45,7 @@ To complete a request you should:
 
 Tools are operational commands; skills are separate playbooks—do not treat skills as tools. If the user asks about tools, answer directly without calling any tool. Calling list_skills without an explicit user request for skills is a mistake.
 
-Task list: manage it with the task tools (seed with "create a plan to respond"). Keep items concise and up to date before replying; if tasks remain and you're not blocked, keep working instead of replying. 
+Task list: manage it with the task tools. Keep items concise and up to date before replying; if tasks remain and you're not blocked, keep working instead of replying. 
 
 Tooling: one tool call at a time; payloads go in 'args' (use 'target' only for paths). Avoid tools for trivial Q&A, and prefer non-destructive tools when possible. Validate assumptions with tools when you can; if a tool fails, adjust and retry once before asking the user.
 
@@ -69,7 +69,8 @@ def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_onl
         [
             '{"type":"assistant_turn","version":"1","steps":[{"type":"message","format":"markdown","content":"...user-visible response..."},{"type":"end","reason":"completed"}]}',
             '{"type":"assistant_turn","version":"1","steps":[{"type":"tool_call","call":{"tool":"read","target":"README.md","args":"lines:1-40"}}]}',
-            '{"type":"assistant_turn","version":"1","steps":[{"type":"think","content":"Short internal note..."},{"type":"tool_call","call":{"tool":"list_tasks","target":"","args":""}}]}',
+            '{"type":"assistant_turn","version":"1","steps":[{"type":"message","purpose":"clarification","format":"markdown","content":"Which file should I edit?"}]}',
+            '{"type":"assistant_turn","version":"1","steps":[{"type":"add_task","args":{"task":"read README.md"}},{"type":"add_task","args":{"task":"summarize CLI flags"}},{"type":"list_tasks"}]}',
         ]
     )
 
@@ -80,6 +81,9 @@ def build_tool_prompt(allowed_tools: Sequence[str], yolo_enabled: bool, read_onl
         "Required schema: {'type':'assistant_turn','version':'1','steps':[...]}",
         "Supported step types: think, tool_call, message, end.",
         "Tool calls must be emitted as a tool_call step with call={tool,target,args}. Only ONE tool_call step is allowed per reply.",
+        "Task tool shorthand: you may emit steps with type add_task/complete_task/delete_task/list_tasks directly; they are treated as tool calls. You may include multiple task-tool steps in one reply.",
+        "Messages: message steps support purpose={'progress','clarification','cannot_finish','final'} (default: progress).",
+        "Governance: if the task list has incomplete items, the loop will withhold progress/final messages until tasks are completed. Use purpose='clarification' to ask the user something, or purpose='cannot_finish' to explain why you cannot finish.",
         "Use end when you believe the user request is complete (the loop may block end if the task list is not complete).",
         "Examples (copy the shape exactly):",
         f"{examples_block}",

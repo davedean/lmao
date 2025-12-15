@@ -16,18 +16,16 @@ class TaskListManager:
         self.tasks: List[Task] = []
         self._next_id: int = 1
         self._active: bool = False
-        # Always start with an active list and a planning task.
-        self.new_list(seed_plan=True)
+        # Always start with an active list.
+        self.new_list()
 
     def has_list(self) -> bool:
         return self._active
 
-    def new_list(self, seed_plan: bool = False) -> None:
+    def new_list(self) -> None:
         self.tasks = []
         self._next_id = 1
         self._active = True
-        if seed_plan:
-            self.add_task("create a plan to respond")
 
     def add_task(self, text: str) -> Task:
         if not self.has_list():

@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 from .plugins import PluginTool
 
-SKILL_GUIDE = """Skills live under ./skills. Each Skill must be in its own folder: ./skills/<skill-name>
+SKILL_GUIDE = """Skills are instructions for agents, on how to accomplish tasks. They are not strictly "software" and should not be thought of as such.
+
+Skills live under ./skills. Each Skill must be in its own folder: ./skills/<skill-name>
 
 The entrypoint for a skill is a SKILL.md in the skill folder. Supporting files can live alongside SKILL.md within the skill folder.
 
@@ -43,7 +45,7 @@ To complete a request you should:
 - Use the task list to manage the plan, keeping it up to date with your progress.
 - When the task list is complete, respond to the user with the final result.
 
-Tools are operational commands; skills are separate playbooks—do not treat skills as tools. If the user asks about tools, answer directly without calling any tool. Calling list_skills without an explicit user request for skills is a mistake.
+Tools are operational commands; skills are separate playbooks — do not treat skills as tools. If the user asks about tools, answer directly without calling any tool. Calling list_skills without an explicit user request for skills is a mistake.
 
 Task list: manage it with the task tools. Keep items concise and up to date before replying; if tasks remain and you're not blocked, keep working instead of replying. 
 

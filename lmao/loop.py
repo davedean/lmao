@@ -16,6 +16,7 @@ from .task_list import TaskListManager
 from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
 from .text_utils import truncate_text
+from .runtime_tools import RuntimeContext, RuntimeTool, build_runtime_tool_registry
 from .user_input import read_user_prompt
 
 COLOR_BLUE = "\033[94m"
@@ -107,6 +108,8 @@ def run_agent_turn(
     task_manager: TaskListManager,
     show_stats: bool,
     debug_logger: Optional[DebugLogger] = None,
+    runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
+    runtime_context: Optional[RuntimeContext] = None,
 ) -> Tuple[int, Optional[LLMCallStats], bool]:
     """Run one model turn, executing tools until the model stops requesting them."""
     empty_replies = 0
@@ -338,6 +341,8 @@ def run_agent_turn(
                     yolo_enabled,
                     read_only=read_only,
                     plugin_tools=plugin_tools,
+                    runtime_tools=runtime_tools,
+                    runtime_context=runtime_context,
                     task_manager=task_manager,
                     debug_logger=debug_logger,
                 )
@@ -447,7 +452,9 @@ def run_loop(
     plugins = discover_plugins(plugin_dirs or [], base, debug_logger=debug_logger, allow_outside_base=True)
     if debug_logger and plugins:
         debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
+    runtime_tools = build_runtime_tool_registry()
     allowed_tools = get_allowed_tools(read_only=read_only, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))
+    allowed_tools = list(allowed_tools) + sorted(runtime_tools.keys())
     mode_label = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
     last_prompt_stats: Optional[LLMCallStats] = None
 
@@ -472,10 +479,22 @@ def run_loop(
             read_only=read_only,
             allowed_tools=allowed_tools,
             plugins=list(plugins.values()),
+            runtime_tools=list(runtime_tools.values()),
         )
     ]
     user_input = initial_prompt
     turn = 1
+    runtime_ctx = RuntimeContext(
+        client=client,
+        plugin_tools=plugins,
+        base=base,
+        extra_roots=extra_roots,
+        skill_roots=skill_roots,
+        yolo_enabled=yolo_enabled,
+        read_only=read_only,
+        task_manager=task_manager,
+        debug_logger=debug_logger,
+    )
 
     if debug_logger and initial_prompt is not None:
         debug_logger.log("user.initial_prompt", initial_prompt)
@@ -523,6 +542,8 @@ def run_loop(
             read_only=read_only,
             allowed_tools=allowed_tools,
             plugin_tools=plugins,
+            runtime_tools=runtime_tools,
+            runtime_context=runtime_ctx,
             task_manager=task_manager,
             show_stats=show_stats,
             debug_logger=debug_logger,

@@ -164,6 +164,9 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
         else:
             raise ProtocolError("assistant_turn.type must be 'assistant_turn'")
     version = str(obj.get("version", "")).strip()
+    lowered = version.lower()
+    if lowered in ("v1", "v2"):
+        version = lowered[1:]
     if version not in SUPPORTED_VERSIONS:
         raise ProtocolError(f"assistant_turn.version must be one of {sorted(SUPPORTED_VERSIONS)}")
 

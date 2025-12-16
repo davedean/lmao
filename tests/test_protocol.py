@@ -22,6 +22,17 @@ class ProtocolParsingTests(TestCase):
         self.assertEqual("1", turn.version)
         self.assertEqual(3, len(turn.steps))
 
+    def test_accepts_version_alias_v2(self) -> None:
+        raw = json.dumps(
+            {
+                "type": "assistant_turn",
+                "version": "v2",
+                "steps": [{"type": "message", "content": "hi"}, {"type": "end"}],
+            }
+        )
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("2", turn.version)
+
     def test_accepts_fenced_json(self) -> None:
         raw_obj = {
             "type": "assistant_turn",

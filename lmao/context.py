@@ -4,29 +4,48 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 from .plugins import PluginTool
+from .runtime_tools import RuntimeTool
 
-def _format_tool_catalog(allowed_tools: Sequence[str], plugins: Optional[Sequence[PluginTool]]) -> str:
+def _format_tool_catalog(
+    allowed_tools: Sequence[str],
+    plugins: Optional[Sequence[PluginTool]],
+    runtime_tools: Optional[Sequence[RuntimeTool]] = None,
+) -> str:
     if not allowed_tools:
         return "(no tools discovered)"
     resolved = list(allowed_tools)
     by_name: Dict[str, PluginTool] = {}
     if plugins:
         by_name = {tool.name: tool for tool in plugins}
+    rt_by_name: Dict[str, RuntimeTool] = {}
+    if runtime_tools:
+        rt_by_name = {tool.name: tool for tool in runtime_tools}
     lines: List[str] = []
     for name in resolved:
         tool = by_name.get(name)
-        if tool is None:
-            lines.append(f"- {name}")
+        if tool is not None:
+            lines.append(f"- {tool.name}: {tool.description}")
+            for ex in (tool.usage_examples or [])[:3]:
+                lines.append(f"  usage: {ex}")
             continue
-        lines.append(f"- {tool.name}: {tool.description}")
-        for ex in (tool.usage_examples or [])[:3]:
-            lines.append(f"  usage: {ex}")
+        rt_tool = rt_by_name.get(name)
+        if rt_tool is not None:
+            lines.append(f"- {rt_tool.name}: {rt_tool.description}")
+            for ex in (list(rt_tool.usage_examples) or [])[:2]:
+                lines.append(f"  usage: {ex}")
+            continue
+        lines.append(f"- {name}")
     return "\n".join(lines)
 
 
-def build_tool_prompt(allowed_tools: Sequence[str], read_only: bool, plugins: Optional[Sequence[PluginTool]] = None) -> str:
+def build_tool_prompt(
+    allowed_tools: Sequence[str],
+    read_only: bool,
+    plugins: Optional[Sequence[PluginTool]] = None,
+    runtime_tools: Optional[Sequence[RuntimeTool]] = None,
+) -> str:
     resolved = list(allowed_tools)
-    tool_catalog = _format_tool_catalog(resolved, plugins)
+    tool_catalog = _format_tool_catalog(resolved, plugins, runtime_tools=runtime_tools)
     prompt_lines = [
         "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
         "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]}",
@@ -148,8 +167,16 @@ def gather_context(workdir: Path) -> NotesContext:
     )
 
 
-def build_system_message(workdir: Path, notes: NotesContext, initial_task_list: Optional[str] = None, read_only: bool = False, allowed_tools: Sequence[str] = (), plugins: Optional[Sequence[PluginTool]] = None) -> Dict[str, str]:
-    tool_prompt = build_tool_prompt(list(allowed_tools), read_only, plugins=plugins)
+def build_system_message(
+    workdir: Path,
+    notes: NotesContext,
+    initial_task_list: Optional[str] = None,
+    read_only: bool = False,
+    allowed_tools: Sequence[str] = (),
+    plugins: Optional[Sequence[PluginTool]] = None,
+    runtime_tools: Optional[Sequence[RuntimeTool]] = None,
+) -> Dict[str, str]:
+    tool_prompt = build_tool_prompt(list(allowed_tools), read_only, plugins=plugins, runtime_tools=runtime_tools)
     content = (
         f"{tool_prompt}\n"
         f"Working directory: {workdir}\n"

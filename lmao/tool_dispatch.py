@@ -10,6 +10,7 @@ from .path_safety import safe_target_path
 from .plugins import PluginTool
 from .task_list import TaskListManager
 from .tool_parsing import ToolCall
+from .runtime_tools import RuntimeContext, RuntimeTool, runtime_tool_allowed
 
 
 def json_success(tool: str, data: Any, note: Optional[str] = None) -> str:
@@ -67,6 +68,8 @@ def run_tool(
     yolo_enabled: bool,
     read_only: bool = False,
     plugin_tools: Optional[Dict[str, PluginTool]] = None,
+    runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
+    runtime_context: Optional[RuntimeContext] = None,
     task_manager: Optional[TaskListManager] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> str:
@@ -82,6 +85,23 @@ def run_tool(
         )
 
     plugins = plugin_tools or {}
+    rt_tools = runtime_tools or {}
+    if tool in rt_tools:
+        rt = rt_tools[tool]
+        if not runtime_tool_allowed(rt, read_only=read_only, yolo_enabled=yolo_enabled):
+            mode = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
+            return json_error(tool, f"runtime tool '{tool}' is not allowed in {mode} mode")
+        if rt.is_destructive and read_only:
+            return json_error(tool, "runtime tool is destructive and not allowed in read-only mode")
+        if runtime_context is None:
+            return json_error(tool, f"runtime context missing for '{tool}'")
+        try:
+            return rt.handler(runtime_context, target, args, meta)
+        except Exception as exc:
+            if debug_logger:
+                debug_logger.log("runtime_tool.error", f"tool={tool} error={exc}")
+            return json_error(tool, f"runtime tool '{tool}' failed: {exc}")
+
     if tool not in plugins:
         return json_error(tool, f"unsupported tool '{tool}'")
 

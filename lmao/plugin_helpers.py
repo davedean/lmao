@@ -4,13 +4,13 @@ from pathlib import Path
 from typing import Optional, Sequence, Tuple
 
 from .context import find_repo_root as _find_repo_root
-from .skills import validate_skill_write_target as _validate_skill_write_target
-from .tools import (
+from .path_safety import (
     normalize_path_for_output as _normalize_path_for_output,
-    normalize_task_text as _normalize_task_text,
     parse_line_range as _parse_line_range,
     safe_target_path as _safe_target_path,
 )
+from .skills import validate_skill_write_target as _validate_skill_write_target
+from .text_utils import normalize_task_text as _normalize_task_text
 
 
 def safe_target_path(target: str, base: Path, extra_roots: Sequence[Path]) -> Path:

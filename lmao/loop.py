@@ -15,6 +15,7 @@ from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_as
 from .task_list import TaskListManager
 from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
+from .text_utils import truncate_text
 from .user_input import read_user_prompt
 
 COLOR_BLUE = "\033[94m"
@@ -88,16 +89,7 @@ def _upsert_governance_notice(
 
 
 def _truncate_preview(text: str, max_lines: int = 4, max_chars: int = 400) -> str:
-    if not text:
-        return ""
-    lines = text.splitlines() or [text]
-    head = lines[:max_lines]
-    preview = "\n".join(head)
-    if len(lines) > max_lines:
-        preview += "\n...[truncated]"
-    if len(preview) > max_chars:
-        preview = preview[:max_chars] + "\n...[truncated]"
-    return preview
+    return truncate_text(text, max_lines=max_lines, max_chars=max_chars)
 
 def run_agent_turn(
     messages: List[Dict[str, str]],

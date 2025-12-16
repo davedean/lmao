@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import ast
 import json
-import re
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
+
+from .jsonish import iter_jsonish_candidates, try_load_jsonish
 
 
 PROTOCOL_VERSION = "1"
 SUPPORTED_VERSIONS = {"1", "2"}
 TASK_TOOL_NAMES = {"add_task", "complete_task", "delete_task", "list_tasks"}
-_FENCED_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)```", flags=re.DOTALL | re.IGNORECASE)
 
 
 class ProtocolError(ValueError):
@@ -86,88 +85,13 @@ def _coerce_args_v1(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def _extract_fenced_blocks(raw_text: str) -> List[str]:
-    blocks = []
-    for match in _FENCED_BLOCK_RE.findall(raw_text):
-        cleaned = match.strip()
-        if cleaned:
-            blocks.append(cleaned)
-    return blocks
-
-
-def _extract_braced_objects(raw_text: str) -> List[str]:
-    """Extract top-level brace-delimited JSON-ish substrings."""
-    objs: List[str] = []
-    depth = 0
-    start: Optional[int] = None
-    for idx, ch in enumerate(raw_text):
-        if ch == "{":
-            if depth == 0:
-                start = idx
-            depth += 1
-        elif ch == "}":
-            if depth:
-                depth -= 1
-                if depth == 0 and start is not None:
-                    objs.append(raw_text[start : idx + 1].strip())
-                    start = None
-    return objs
-
-
 def _iter_jsonish_text_candidates(raw_text: str) -> Iterator[str]:
-    stripped = raw_text.strip()
-    candidates: List[str] = []
-    candidates.extend(_extract_fenced_blocks(raw_text))
-    candidates.extend(_extract_braced_objects(raw_text))
-    if stripped:
-        candidates.append(stripped)
-    seen = set()
-    for cand in candidates:
-        if cand in seen:
-            continue
-        seen.add(cand)
-        yield cand
-
-
-def _extract_json_prefix_on_extra_data(raw_text: str) -> Optional[dict]:
-    """
-    Best-effort recovery for model outputs that accidentally concatenate multiple JSON objects.
-    If we can parse the first JSON object cleanly, return it; otherwise None.
-    """
-    try:
-        json.loads(raw_text)
-        return None
-    except json.JSONDecodeError as exc:
-        if "Extra data" not in str(exc):
-            return None
-        prefix = raw_text[: exc.pos].strip()
-        if not prefix:
-            return None
-        try:
-            obj = json.loads(prefix)
-            return obj if isinstance(obj, dict) else None
-        except Exception:
-            return None
+    yield from iter_jsonish_candidates(raw_text)
 
 
 def _try_load_jsonish_dict(raw_text: str) -> Optional[Dict[str, Any]]:
-    cleaned = raw_text.strip()
-    if not cleaned:
-        return None
-    try:
-        obj = json.loads(cleaned)
-        return obj if isinstance(obj, dict) else None
-    except json.JSONDecodeError:
-        recovered = _extract_json_prefix_on_extra_data(cleaned)
-        if recovered is not None:
-            return recovered
-    except Exception:
-        return None
-    try:
-        literal = ast.literal_eval(cleaned)
-        return literal if isinstance(literal, dict) else None
-    except Exception:
-        return None
+    loaded = try_load_jsonish(raw_text, recover_extra_data=True)
+    return loaded if isinstance(loaded, dict) else None
 
 
 def _load_jsonish_dict(raw_text: str) -> Dict[str, Any]:

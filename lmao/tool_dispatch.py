@@ -26,19 +26,9 @@ def json_error(tool: str, message: str) -> str:
 def get_allowed_tools(
     read_only: bool, yolo_enabled: bool, plugins: Optional[Sequence[PluginTool]] = None
 ) -> List[str]:
-    allowed: List[str] = []
-    if plugins:
-        for plugin in plugins:
-            if read_only:
-                if plugin.allow_in_read_only:
-                    allowed.append(plugin.name)
-                continue
-            if yolo_enabled and (plugin.allow_in_yolo or plugin.allow_in_normal):
-                allowed.append(plugin.name)
-                continue
-            if not yolo_enabled and plugin.allow_in_normal:
-                allowed.append(plugin.name)
-    return allowed
+    if not plugins:
+        return []
+    return [plugin.name for plugin in plugins if plugin_allowed(plugin, read_only, yolo_enabled)]
 
 
 def plugin_allowed(plugin: PluginTool, read_only: bool, yolo_enabled: bool) -> bool:

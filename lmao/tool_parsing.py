@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import ast
-import json
-import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Union
 
+from .jsonish import extract_braced_objects as _extract_braced_objects
+from .jsonish import iter_jsonish_candidates, try_load_jsonish
 
 @dataclass
 class ToolCall:
@@ -23,22 +22,7 @@ class ToolCall:
 
 
 def iter_json_candidates(raw_text: str) -> List[str]:
-    candidates: List[str] = []
-    stripped = raw_text.strip()
-    fenced = re.findall(r"```(?:json)?\s*(.*?)```", raw_text, flags=re.DOTALL)
-    candidates.extend(fenced)
-    candidates.extend(extract_braced_objects(raw_text))
-    if stripped:
-        candidates.append(stripped)
-    # Deduplicate while preserving order
-    seen = set()
-    unique: List[str] = []
-    for cand in candidates:
-        if cand in seen:
-            continue
-        seen.add(cand)
-        unique.append(cand)
-    return unique
+    return list(iter_jsonish_candidates(raw_text))
 
 
 def parse_tool_calls(raw_text: str, allowed_tools: Optional[Sequence[str]] = None) -> List[ToolCall]:
@@ -80,33 +64,14 @@ def covers_message(candidate: str, raw_text: str) -> bool:
 
 
 def extract_braced_objects(raw_text: str) -> List[str]:
-    """Extract top-level brace-delimited JSON-ish substrings."""
-    objs: List[str] = []
-    depth = 0
-    start: Optional[int] = None
-    for idx, ch in enumerate(raw_text):
-        if ch == "{":
-            if depth == 0:
-                start = idx
-            depth += 1
-        elif ch == "}":
-            if depth:
-                depth -= 1
-                if depth == 0 and start is not None:
-                    objs.append(raw_text[start : idx + 1].strip())
-                    start = None
-    return objs
+    # Back-compat: exported via `lmao.tools` and used by tests.
+    return _extract_braced_objects(raw_text)
 
 
 def load_candidate(text: str) -> Optional[Union[Dict[str, Any], List[Any]]]:
-    cleaned = text.strip()
-    if not cleaned:
+    loaded = try_load_jsonish(text, recover_extra_data=False)
+    if loaded is None:
         return None
-    for loader in (json.loads, ast.literal_eval):
-        try:
-            obj = loader(cleaned)
-            if isinstance(obj, (dict, list)):
-                return obj
-        except Exception:
-            continue
+    if isinstance(loaded, (dict, list)):
+        return loaded
     return None

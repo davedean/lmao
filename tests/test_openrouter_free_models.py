@@ -124,14 +124,16 @@ class OpenRouterFreeModelsTests(TestCase):
             chosen = selector.select_model()
             self.assertEqual("model-two", chosen.model_id)
 
-    def test_pricing_none_is_rejected(self) -> None:
+    def test_missing_pricing_allowed_for_free_tag(self) -> None:
         discovery = OpenRouterModelDiscovery(
             models_endpoint="https://openrouter.ai/api/v1/models",
             api_key="secret",
             cache_path=Path(tempfile.gettempdir()) / "openrouter-pricing-test.json",
         )
-        candidate = _build_candidate("model-missing-pricing", pricing_input=None, pricing_output=None)
-        self.assertFalse(discovery._is_free(candidate))
+        candidate = _build_candidate(
+            "openrouter/missing-pricing", pricing_input=None, pricing_output=None, tag_is_free=True
+        )
+        self.assertTrue(discovery._is_free(candidate))
 
     def test_zero_pricing_without_free_tag_filtered(self) -> None:
         discovery = OpenRouterModelDiscovery(
@@ -201,3 +203,28 @@ class OpenRouterFreeModelsTests(TestCase):
                 self.assertEqual(1, mocked_urlopen.call_count)
             finally:
                 cache_path.unlink(missing_ok=True)
+
+    def test_cached_models_revalidated(self) -> None:
+        cache_path = Path(tempfile.gettempdir()) / "openrouter-cache-filter.json"
+        payload = {
+            "fetched_at": datetime.now().isoformat(),
+            "models": [
+                {
+                    "model_id": "openai/gpt-4.1",
+                    "pricing_input": 0,
+                    "pricing_output": 0,
+                    "modalities": ["text"],
+                    "tag_is_free": False,
+                }
+            ],
+        }
+        cache_path.write_text(json.dumps(payload), encoding="utf-8")
+        discovery = OpenRouterModelDiscovery(
+            models_endpoint="https://openrouter.ai/api/v1/models",
+            api_key="secret",
+            cache_path=cache_path,
+            ttl_seconds=3600,
+        )
+        cached = discovery._load_cache()
+        self.assertIsNone(cached)
+        cache_path.unlink(missing_ok=True)

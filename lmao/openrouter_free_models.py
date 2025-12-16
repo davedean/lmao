@@ -256,7 +256,10 @@ class OpenRouterModelDiscovery:
             candidate = OpenRouterModelCandidate.from_cache(entry)
             if candidate:
                 models.append(candidate)
-        return models
+        valid = [candidate for candidate in models if self._is_free(candidate)]
+        if not valid:
+            return None
+        return valid
 
     def _write_cache(self, models: Iterable[OpenRouterModelCandidate]) -> None:
         self._cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -308,13 +311,15 @@ class OpenRouterModelDiscovery:
         return candidates
 
     def _is_free(self, candidate: OpenRouterModelCandidate) -> bool:
+        if not candidate.tag_is_free:
+            return False
         input_price = candidate.pricing_input
         output_price = candidate.pricing_output
-        if input_price is None and output_price is None:
+        if input_price is not None and input_price != 0.0:
             return False
-        input_is_zero = input_price == 0.0 if input_price is not None else False
-        output_is_zero = output_price == 0.0 if output_price is not None else False
-        return input_is_zero and output_is_zero and candidate.tag_is_free
+        if output_price is not None and output_price != 0.0:
+            return False
+        return True
 
     def _build_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"}

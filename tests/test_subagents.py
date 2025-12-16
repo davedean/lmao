@@ -73,6 +73,32 @@ class TestSubagents(unittest.TestCase):
         self.assertEqual(payload["data"]["result"]["status"], "ok")
         self.assertEqual(payload["data"]["result"]["summary"], "done")
 
+    def test_subagent_run_treats_final_message_as_done(self) -> None:
+        content = json.dumps(
+            {
+                "type": "assistant_turn",
+                "version": "2",
+                "steps": [
+                    {"type": "message", "purpose": "final", "content": "done"},
+                ],
+            }
+        )
+        runtime_ctx = RuntimeContext(
+            client=_FakeClient(content),
+            plugin_tools={},
+            base=SimpleNamespace(),
+            extra_roots=(),
+            skill_roots=(),
+            yolo_enabled=False,
+            read_only=False,
+            task_manager=None,
+            debug_logger=None,
+        )
+        raw = subagent_run_tool(runtime_ctx, "", {"objective": "test", "max_turns": 2}, None)
+        payload = json.loads(raw)
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["data"]["result"]["status"], "ok")
+
     def test_subagent_run_tool_accepts_target_as_objective(self) -> None:
         content = json.dumps(
             {

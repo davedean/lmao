@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from .context import build_tool_prompt
 from .llm import LLMCallResult, LLMClient, LLMCallStats
 from .plugins import PluginTool
 from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
@@ -35,18 +36,28 @@ def _coerce_str(value: Any) -> str:
         return str(value)
 
 
-def _subagent_system_prompt(*, allowed_tools: Sequence[str]) -> Dict[str, str]:
-    tool_lines = "\n".join(f"- {name}" for name in sorted(set(allowed_tools)))
+def _subagent_system_prompt(
+    *,
+    allowed_tools: Sequence[str],
+    plugin_tools: Dict[str, PluginTool],
+) -> Dict[str, str]:
+    # Reuse the main tool prompt scaffolding so models don't "forget" the assistant_turn protocol
+    # inside sub-agent runs.
+    base_prompt = build_tool_prompt(
+        list(allowed_tools),
+        read_only=True,
+        plugins=list(plugin_tools.values()),
+        runtime_tools=None,
+    )
     content = "\n".join(
         [
-            "You are a sub-agent running inside a larger agent loop.",
-            "You are NOT interacting with the human user directly.",
-            "Follow the same assistant_turn JSON protocol as the main agent.",
-            "Use tools as needed, but stay within the allowed tool list.",
-            "When done, provide a concise report as a message step (purpose='final') and then end.",
+            "SUBAGENT MODE:",
+            "- You are a sub-agent running inside a larger agent loop.",
+            "- You are NOT interacting with the human user directly.",
+            "- Use tools to make progress; do not ask the user for permission or clarifications unless strictly required.",
+            "- When finished: send a message step with purpose='final' AND include an end step.",
             "",
-            "Allowed tools:",
-            tool_lines or "(none)",
+            base_prompt,
         ]
     )
     return {"role": "system", "content": content}
@@ -100,7 +111,7 @@ def run_subagent_one_shot(
 ) -> Tuple[SubAgentResult, Optional[LLMCallStats]]:
     task_manager = TaskListManager()
     messages: List[Dict[str, str]] = [
-        _subagent_system_prompt(allowed_tools=allowed_tools),
+        _subagent_system_prompt(allowed_tools=allowed_tools, plugin_tools=plugin_tools),
         _subagent_user_prompt(objective, context),
     ]
 
@@ -129,6 +140,12 @@ def run_subagent_one_shot(
 
         thinks, msg_steps, has_end = collect_steps(turn_obj.steps)
         calls = collect_tool_calls(turn_obj.steps)
+
+        # Model convenience: if it produces a final report but forgets the explicit end step,
+        # treat it as completion rather than looping until max_turns.
+        if not calls and any(getattr(step, "purpose", "") == "final" for step in msg_steps):
+            summary = _final_message(msg_steps)
+            return _default_result("ok", summary or "completed", turns=turn), last_stats
 
         # Execute tool calls sequentially, feeding results back into the sub-agent.
         for call in calls:

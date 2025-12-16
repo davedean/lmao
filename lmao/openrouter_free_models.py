@@ -42,6 +42,7 @@ class OpenRouterModelCandidate:
     status: Optional[str]
     released_at: Optional[datetime]
     modalities: tuple[str, ...]
+    tag_is_free: bool
 
     @property
     def abbreviated_id(self) -> str:
@@ -79,6 +80,7 @@ class OpenRouterModelCandidate:
             status=status,
             released_at=released_at,
             modalities=tuple(modalities),
+            tag_is_free=cls._detect_free_tag(model_id),
         )
 
     @classmethod
@@ -99,6 +101,7 @@ class OpenRouterModelCandidate:
             status=data.get("status"),
             released_at=released_at,
             modalities=modalities,
+            tag_is_free=cls._parse_bool(data.get("tag_is_free")),
         )
 
     def to_cache(self) -> dict[str, Any]:
@@ -113,6 +116,7 @@ class OpenRouterModelCandidate:
             "status": self.status,
             "released_at": self.released_at.isoformat() if self.released_at else None,
             "modalities": list(self.modalities),
+            "tag_is_free": self.tag_is_free,
         }
 
     @staticmethod
@@ -181,6 +185,19 @@ class OpenRouterModelCandidate:
             if blocked in entries:
                 return False
         return True
+
+    @staticmethod
+    def _detect_free_tag(model_id: str) -> bool:
+        lower = model_id.lower()
+        return ":free" in lower or lower.endswith(" free")
+
+    @staticmethod
+    def _parse_bool(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        return str(value).lower() in {"1", "true", "yes", "on"}
 
 
 def resolve_model_cache_path() -> Path:
@@ -297,7 +314,7 @@ class OpenRouterModelDiscovery:
             return False
         input_is_zero = input_price == 0.0 if input_price is not None else False
         output_is_zero = output_price == 0.0 if output_price is not None else False
-        return input_is_zero and output_is_zero
+        return input_is_zero and output_is_zero and candidate.tag_is_free
 
     def _build_headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"}

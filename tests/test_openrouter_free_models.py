@@ -32,6 +32,7 @@ def _build_candidate(
     pricing_input: Optional[float] = 0.0,
     pricing_output: Optional[float] = 0.0,
     modalities: tuple[str, ...] = ("text",),
+    tag_is_free: Optional[bool] = None,
 ) -> OpenRouterModelCandidate:
     return OpenRouterModelCandidate(
         model_id=model_id,
@@ -44,7 +45,13 @@ def _build_candidate(
         status="available",
         released_at=datetime.now(),
         modalities=modalities,
+        tag_is_free=_detect_free_tag(model_id) if tag_is_free is None else tag_is_free,
     )
+
+
+def _detect_free_tag(model_id: str) -> bool:
+    lower = model_id.lower()
+    return ":free" in lower or lower.endswith(" free")
 
 
 class OpenRouterFreeModelsTests(TestCase):
@@ -126,11 +133,25 @@ class OpenRouterFreeModelsTests(TestCase):
         candidate = _build_candidate("model-missing-pricing", pricing_input=None, pricing_output=None)
         self.assertFalse(discovery._is_free(candidate))
 
+    def test_zero_pricing_without_free_tag_filtered(self) -> None:
+        discovery = OpenRouterModelDiscovery(
+            models_endpoint="https://openrouter.ai/api/v1/models",
+            api_key="secret",
+            cache_path=Path(tempfile.gettempdir()) / "openrouter-tag-test.json",
+        )
+        candidate = _build_candidate(
+            "openai/gpt-4.1",
+            pricing_input=0.0,
+            pricing_output=0.0,
+            modalities=("text",),
+        )
+        self.assertFalse(discovery._is_free(candidate))
+
     def test_discovery_caches_and_filters(self) -> None:
         payload = {
             "data": [
                 {
-                    "id": "free-model",
+                    "id": "free-model:free",
                     "pricing": {"input": 0, "output": 0},
                     "context_length": 4096,
                     "parameters": 1_000_000_000,
@@ -173,7 +194,7 @@ class OpenRouterFreeModelsTests(TestCase):
             try:
                 first_batch = discovery.fetch_free_models()
                 self.assertEqual(1, len(first_batch))
-                self.assertEqual("free-model", first_batch[0].model_id)
+                self.assertEqual("free-model:free", first_batch[0].model_id)
                 self.assertTrue(cache_path.exists())
                 second_batch = discovery.fetch_free_models()
                 self.assertEqual(1, len(second_batch))

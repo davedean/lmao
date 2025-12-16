@@ -27,6 +27,39 @@ def run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_l
     return json.dumps({{"tool": "{name}", "success": True, "data": {{"target": target, "args": args}}}})
 """
 
+MULTI_PLUGIN_TEMPLATE = """from lmao.plugins import PLUGIN_API_VERSION
+
+PLUGINS = [
+    {{
+        "name": "{name_a}",
+        "description": "test multi plugin a",
+        "api_version": PLUGIN_API_VERSION,
+        "is_destructive": False,
+        "allow_in_read_only": True,
+        "allow_in_normal": True,
+        "allow_in_yolo": True,
+        "always_confirm": False,
+        "usage": "{{'tool':'{name_a}','target':'','args':''}}",
+    }},
+    {{
+        "name": "{name_b}",
+        "description": "test multi plugin b",
+        "api_version": PLUGIN_API_VERSION,
+        "is_destructive": False,
+        "allow_in_read_only": True,
+        "allow_in_normal": True,
+        "allow_in_yolo": True,
+        "always_confirm": False,
+        "usage": "{{'tool':'{name_b}','target':'','args':''}}",
+    }},
+]
+
+
+def run(tool_name, target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None):
+    import json
+    return json.dumps({{"tool": tool_name, "success": True, "data": {{"target": target, "args": args}}}})
+"""
+
 
 class PluginLoaderTests(TestCase):
     def setUp(self) -> None:
@@ -56,6 +89,15 @@ class PluginLoaderTests(TestCase):
                 allow_in_yolo=str(allow_in_yolo),
                 always_confirm=str(always_confirm),
             ),
+            encoding="utf-8",
+        )
+        return plugin_dir
+
+    def _write_multi_plugin(self, name_a: str = "multi_a", name_b: str = "multi_b") -> Path:
+        plugin_dir = self.base / "plugins" / "multi"
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "tool.py").write_text(
+            MULTI_PLUGIN_TEMPLATE.format(name_a=name_a, name_b=name_b),
             encoding="utf-8",
         )
         return plugin_dir
@@ -160,6 +202,38 @@ class PluginLoaderTests(TestCase):
             )
         payload_ok = json.loads(result_ok)
         self.assertTrue(payload_ok["success"])
+
+    def test_loads_multi_tool_plugin(self) -> None:
+        plugin_dir = self._write_multi_plugin(name_a="multi_a", name_b="multi_b")
+        plugins = discover_plugins([plugin_dir], self.base)
+        self.assertIn("multi_a", plugins)
+        self.assertIn("multi_b", plugins)
+
+        call_a = ToolCall(tool="multi_a", target="t", args="a")
+        result_a = run_tool(
+            call_a,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=False,
+            plugin_tools=plugins,
+        )
+        payload_a = json.loads(result_a)
+        self.assertTrue(payload_a["success"])
+        self.assertEqual("multi_a", payload_a["tool"])
+
+        call_b = ToolCall(tool="multi_b", target="t", args="b")
+        result_b = run_tool(
+            call_b,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=False,
+            plugin_tools=plugins,
+        )
+        payload_b = json.loads(result_b)
+        self.assertTrue(payload_b["success"])
+        self.assertEqual("multi_b", payload_b["tool"])
 
 
 class BuiltinPluginTests(TestCase):

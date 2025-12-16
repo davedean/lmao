@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Dict, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .debug_log import DebugLogger
 
@@ -19,6 +19,7 @@ class PluginTool:
     description: str
     input_schema: Optional[str]
     usage_examples: list[str]
+    details: list[str]
     is_destructive: bool
     allow_in_read_only: bool
     allow_in_normal: bool
@@ -51,6 +52,9 @@ def _validate_manifest(manifest: Dict[str, Any]) -> Optional[str]:
     usage = manifest.get("usage")
     if usage is not None and not isinstance(usage, (str, list, tuple)):
         return "usage must be a string or list of strings when provided"
+    details = manifest.get("details")
+    if details is not None and not isinstance(details, (str, list, tuple)):
+        return "details must be a string or list of strings when provided"
     for key in ("allow_in_read_only", "allow_in_normal", "allow_in_yolo"):
         value = manifest.get(key, None)
         if value is not None and not isinstance(value, bool):
@@ -76,7 +80,57 @@ def _load_module(path: Path) -> Optional[ModuleType]:
     return module
 
 
-def load_plugin(path: Path, base: Path, debug_logger: Optional[DebugLogger] = None, allow_outside_base: bool = False) -> Optional[PluginTool]:
+def _coerce_usage_examples(raw_usage: Any) -> list[str]:
+    if raw_usage is None:
+        return []
+    if isinstance(raw_usage, str):
+        return [raw_usage.strip()] if raw_usage.strip() else []
+    if isinstance(raw_usage, (list, tuple)):
+        return [str(item).strip() for item in raw_usage if str(item).strip()]
+    return []
+
+
+def _coerce_details(raw_details: Any) -> list[str]:
+    if raw_details is None:
+        return []
+    if isinstance(raw_details, str):
+        return [raw_details.strip()] if raw_details.strip() else []
+    if isinstance(raw_details, (list, tuple)):
+        return [str(item).strip() for item in raw_details if str(item).strip()]
+    return []
+
+
+def _create_plugin_tool(
+    manifest: Dict[str, Any],
+    handler: Callable[..., str],
+    *,
+    path: Path,
+) -> PluginTool:
+    is_destructive = bool(manifest.get("is_destructive", False))
+    usage_examples = _coerce_usage_examples(manifest.get("usage"))
+    details = _coerce_details(manifest.get("details"))
+    return PluginTool(
+        name=str(manifest["name"]).strip(),
+        description=str(manifest["description"]).strip(),
+        input_schema=str(manifest["input_schema"]).strip() if manifest.get("input_schema") else None,
+        usage_examples=usage_examples,
+        details=details,
+        is_destructive=is_destructive,
+        allow_in_read_only=bool(manifest.get("allow_in_read_only", not is_destructive)),
+        allow_in_normal=bool(manifest.get("allow_in_normal", True)),
+        allow_in_yolo=bool(manifest.get("allow_in_yolo", True)),
+        always_confirm=bool(manifest.get("always_confirm", False)),
+        handler=handler,
+        path=path,
+    )
+
+
+def load_plugins(
+    path: Path,
+    base: Path,
+    debug_logger: Optional[DebugLogger] = None,
+    allow_outside_base: bool = False,
+) -> List[PluginTool]:
     try:
         resolved = path.resolve()
         if not allow_outside_base:
@@ -84,50 +138,92 @@ def load_plugin(path: Path, base: Path, debug_logger: Optional[DebugLogger] = No
     except Exception:
         if debug_logger:
             debug_logger.log("plugin.skip", f"path_outside_base={path}")
-        return None
+        return []
     if not resolved.name.endswith(".py") or resolved.name != "tool.py":
-        return None
+        return []
     module = _load_module(resolved)
     if module is None:
         if debug_logger:
             debug_logger.log("plugin.load_error", f"path={resolved}")
-        return None
-    manifest = getattr(module, "PLUGIN", None)
+        return []
+
     handler = getattr(module, "run", None)
-    if not manifest or not handler or not callable(handler):
+    if not handler or not callable(handler):
         if debug_logger:
-            debug_logger.log("plugin.missing_fields", f"path={resolved}")
-        return None
+            debug_logger.log("plugin.missing_fields", f"path={resolved} missing=run")
+        return []
+
+    multi_manifests = getattr(module, "PLUGINS", None)
+    if multi_manifests is not None:
+        if not isinstance(multi_manifests, list) or not multi_manifests:
+            if debug_logger:
+                debug_logger.log("plugin.invalid_manifest", f"path={resolved} error=PLUGINS must be a non-empty list")
+            return []
+        tools: List[PluginTool] = []
+        for idx, manifest in enumerate(multi_manifests):
+            if not isinstance(manifest, dict):
+                if debug_logger:
+                    debug_logger.log("plugin.invalid_manifest", f"path={resolved} error=PLUGINS[{idx}] must be a dict")
+                return []
+            error = _validate_manifest(manifest)
+            if error:
+                if debug_logger:
+                    debug_logger.log("plugin.invalid_manifest", f"path={resolved} error=PLUGINS[{idx}] {error}")
+                return []
+            tool_name = str(manifest.get("name", "")).strip()
+
+            def _wrapped(
+                target: str,
+                args: str,
+                base: Path,
+                extra_roots,
+                skill_roots,
+                task_manager=None,
+                debug_logger: Optional[DebugLogger] = None,
+                _tool_name: str = tool_name,
+                _handler: Callable[..., str] = handler,
+            ) -> str:
+                return _handler(_tool_name, target, args, base, extra_roots, skill_roots, task_manager, debug_logger)
+
+            try:
+                tools.append(_create_plugin_tool(manifest, _wrapped, path=resolved))
+            except Exception as exc:
+                if debug_logger:
+                    debug_logger.log("plugin.create_error", f"path={resolved} error={exc}")
+                return []
+        return tools
+
+    manifest = getattr(module, "PLUGIN", None)
+    if not manifest or not isinstance(manifest, dict):
+        if debug_logger:
+            debug_logger.log("plugin.missing_fields", f"path={resolved} missing=PLUGIN/PLUGINS")
+        return []
     error = _validate_manifest(manifest)
     if error:
         if debug_logger:
             debug_logger.log("plugin.invalid_manifest", f"path={resolved} error={error}")
-        return None
+        return []
     try:
-        is_destructive = bool(manifest.get("is_destructive", False))
-        raw_usage = manifest.get("usage") or []
-        if isinstance(raw_usage, str):
-            usage_examples = [raw_usage.strip()] if raw_usage.strip() else []
-        else:
-            usage_examples = [str(item).strip() for item in raw_usage if str(item).strip()]
-        tool = PluginTool(
-            name=str(manifest["name"]).strip(),
-            description=str(manifest["description"]).strip(),
-            input_schema=str(manifest["input_schema"]).strip() if manifest.get("input_schema") else None,
-            usage_examples=usage_examples,
-            is_destructive=is_destructive,
-            allow_in_read_only=bool(manifest.get("allow_in_read_only", not is_destructive)),
-            allow_in_normal=bool(manifest.get("allow_in_normal", True)),
-            allow_in_yolo=bool(manifest.get("allow_in_yolo", True)),
-            always_confirm=bool(manifest.get("always_confirm", False)),
-            handler=handler,
-            path=resolved,
-        )
-        return tool
+        return [_create_plugin_tool(manifest, handler, path=resolved)]
     except Exception as exc:
         if debug_logger:
             debug_logger.log("plugin.create_error", f"path={resolved} error={exc}")
-        return None
+        return []
+
+
+def load_plugin(
+    path: Path,
+    base: Path,
+    debug_logger: Optional[DebugLogger] = None,
+    allow_outside_base: bool = False,
+) -> Optional[PluginTool]:
+    """
+    Back-compat wrapper: load the first plugin tool from a tool.py.
+
+    Prefer `load_plugins()` for new code, as a tool.py may define multiple virtual tools via `PLUGINS`.
+    """
+    tools = load_plugins(path, base, debug_logger=debug_logger, allow_outside_base=allow_outside_base)
+    return tools[0] if tools else None
 
 
 def discover_plugins(plugin_dirs: Iterable[Path], base: Path, debug_logger: Optional[DebugLogger] = None, allow_outside_base: bool = False) -> Dict[str, PluginTool]:
@@ -144,12 +240,14 @@ def discover_plugins(plugin_dirs: Iterable[Path], base: Path, debug_logger: Opti
                 debug_logger.log("plugin.dir_missing", f"path={resolved_dir}")
             continue
         for plugin_path in resolved_dir.rglob("tool.py"):
-            plugin = load_plugin(plugin_path, base, debug_logger=debug_logger, allow_outside_base=allow_outside_base)
-            if not plugin:
-                continue
-            if plugin.name in plugins:
-                if debug_logger:
-                    debug_logger.log("plugin.duplicate", f"name={plugin.name} kept={plugins[plugin.name].path} skipped={plugin.path}")
-                continue
-            plugins[plugin.name] = plugin
+            loaded = load_plugins(plugin_path, base, debug_logger=debug_logger, allow_outside_base=allow_outside_base)
+            for plugin in loaded:
+                if plugin.name in plugins:
+                    if debug_logger:
+                        debug_logger.log(
+                            "plugin.duplicate",
+                            f"name={plugin.name} kept={plugins[plugin.name].path} skipped={plugin.path}",
+                        )
+                    continue
+                plugins[plugin.name] = plugin
     return plugins

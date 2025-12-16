@@ -58,6 +58,13 @@ class ToolSafetyTests(TestCase):
         resolved = safe_target_path("/skills", self.base, extra_roots=[])
         self.assertEqual(self.base / "skills", resolved)
 
+    def test_safe_target_path_allows_true_absolute_paths_inside_base(self) -> None:
+        target = self.base / "logs" / "test.log"
+        target.parent.mkdir(parents=True)
+        target.write_text("x", encoding="utf-8")
+        resolved = safe_target_path(str(target), self.base, extra_roots=[])
+        self.assertEqual(target.resolve(), resolved)
+
     def test_safe_target_path_blocks_escape_even_with_leading_slash(self) -> None:
         with self.assertRaises(ValueError):
             safe_target_path("/../outside", self.base, extra_roots=[])

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 from lmao.plugin_helpers import (
@@ -35,12 +35,13 @@ def _error(message: str) -> str:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)
@@ -56,11 +57,12 @@ def run(
         skill_error = validate_skill_write_target(target_path, skill_roots)
         if skill_error:
             return _error(skill_error)
+        content = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
         with target_path.open("w", encoding="utf-8") as fh:
-            fh.write(args or "")
+            fh.write(content or "")
         data = {
             "path": normalize_path_for_output(target_path, base),
-            "bytes": len(args or ""),
+            "bytes": len(content or ""),
         }
         return _success(data)
     except Exception as exc:

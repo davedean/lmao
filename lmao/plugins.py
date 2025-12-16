@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import re
 import sys
 from dataclasses import dataclass
@@ -11,6 +12,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 from .debug_log import DebugLogger
 
 PLUGIN_API_VERSION = "1"
+
+_DISCOVERED_TOOL_REGISTRY: Dict[str, "PluginTool"] = {}
 
 
 @dataclass
@@ -27,6 +30,16 @@ class PluginTool:
     always_confirm: bool
     handler: Callable[..., str]
     path: Path
+
+
+def get_discovered_tool_registry() -> Dict[str, "PluginTool"]:
+    """
+    Read-only view of the most recently discovered plugin tool registry (name -> PluginTool).
+
+    This is intended for helper tools like `tool_help` that need access to tool metadata without
+    requiring protocol changes or threading plugin registries through every handler signature.
+    """
+    return dict(_DISCOVERED_TOOL_REGISTRY)
 
 
 def _validate_manifest(manifest: Dict[str, Any]) -> Optional[str]:
@@ -174,15 +187,25 @@ def load_plugins(
 
             def _wrapped(
                 target: str,
-                args: str,
+                args: Any,
                 base: Path,
                 extra_roots,
                 skill_roots,
                 task_manager=None,
                 debug_logger: Optional[DebugLogger] = None,
+                meta: Optional[Dict[str, Any]] = None,
                 _tool_name: str = tool_name,
                 _handler: Callable[..., str] = handler,
             ) -> str:
+                try:
+                    sig = inspect.signature(_handler)
+                    params = list(sig.parameters.values())
+                    accepts_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+                    accepts_meta = accepts_varargs or len(params) >= 9
+                except Exception:
+                    accepts_meta = False
+                if accepts_meta:
+                    return _handler(_tool_name, target, args, base, extra_roots, skill_roots, task_manager, debug_logger, meta)
                 return _handler(_tool_name, target, args, base, extra_roots, skill_roots, task_manager, debug_logger)
 
             try:
@@ -250,4 +273,6 @@ def discover_plugins(plugin_dirs: Iterable[Path], base: Path, debug_logger: Opti
                         )
                     continue
                 plugins[plugin.name] = plugin
+    global _DISCOVERED_TOOL_REGISTRY
+    _DISCOVERED_TOOL_REGISTRY = dict(plugins)
     return plugins

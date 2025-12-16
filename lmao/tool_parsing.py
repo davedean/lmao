@@ -11,7 +11,8 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 class ToolCall:
     tool: str
     target: str
-    args: str
+    args: Any
+    meta: Optional[Dict[str, Any]] = None
 
     @classmethod
     def from_raw_message(
@@ -60,8 +61,9 @@ def parse_tool_calls(raw_text: str, allowed_tools: Optional[Sequence[str]] = Non
                 continue
             target = str(obj.get("target", "") or "").strip()
             args = obj.get("args", "")
-            args_str = args if isinstance(args, str) else json.dumps(args)
-            calls.append(ToolCall(tool=tool, target=target, args=args_str))
+            meta = obj.get("meta")
+            meta_dict = meta if isinstance(meta, dict) else None
+            calls.append(ToolCall(tool=tool, target=target, args=args, meta=meta_dict))
     return calls
 
 
@@ -108,4 +110,3 @@ def load_candidate(text: str) -> Optional[Union[Dict[str, Any], List[Any]]]:
         except Exception:
             continue
     return None
-

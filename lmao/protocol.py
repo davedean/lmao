@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 
 PROTOCOL_VERSION = "1"
+SUPPORTED_VERSIONS = {"1", "2"}
 TASK_TOOL_NAMES = {"add_task", "complete_task", "delete_task", "list_tasks"}
 _FENCED_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)```", flags=re.DOTALL | re.IGNORECASE)
 
@@ -20,7 +21,8 @@ class ProtocolError(ValueError):
 class ToolCallPayload:
     tool: str
     target: str
-    args: str
+    args: Any
+    meta: Optional[Dict[str, Any]] = None
 
 
 @dataclass(frozen=True)
@@ -76,7 +78,7 @@ def _require_str(obj: Any, where: str) -> str:
     return obj
 
 
-def _coerce_args(value: Any) -> str:
+def _coerce_args_v1(value: Any) -> str:
     if value is None:
         return ""
     if isinstance(value, str):
@@ -197,22 +199,22 @@ def _parse_task_tool_alias_step(step_obj: Dict[str, Any], allowed_tools: Sequenc
     if tool == "add_task":
         if isinstance(payload, dict):
             text = payload.get("task") or payload.get("text") or payload.get("args") or ""
-            args = _coerce_args(text)
+            args = _coerce_args_v1(text)
         else:
-            args = _coerce_args(payload)
-        return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args))
+            args = _coerce_args_v1(payload)
+        return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args, meta=None))
 
     if tool in ("complete_task", "delete_task"):
         if isinstance(payload, dict):
             task_id = payload.get("id") or payload.get("task_id") or payload.get("args") or payload.get("target") or ""
-            args = _coerce_args(task_id)
+            args = _coerce_args_v1(task_id)
         else:
-            args = _coerce_args(payload)
-        return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args))
+            args = _coerce_args_v1(payload)
+        return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args, meta=None))
 
     # list_tasks
-    args = _coerce_args(payload)
-    return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args))
+    args = _coerce_args_v1(payload)
+    return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args, meta=None))
 
 
 def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> AssistantTurn:
@@ -238,8 +240,8 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
         else:
             raise ProtocolError("assistant_turn.type must be 'assistant_turn'")
     version = str(obj.get("version", "")).strip()
-    if version != PROTOCOL_VERSION:
-        raise ProtocolError(f"assistant_turn.version must be '{PROTOCOL_VERSION}'")
+    if version not in SUPPORTED_VERSIONS:
+        raise ProtocolError(f"assistant_turn.version must be one of {sorted(SUPPORTED_VERSIONS)}")
 
     raw_steps = _require_list(obj.get("steps"), "assistant_turn.steps")
     steps: List[Step] = []
@@ -282,8 +284,21 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
             if tool not in set(allowed_tools):
                 raise ProtocolError(f"steps[{idx}].call.tool '{tool}' is not allowed")
             target = str(call_obj.get("target", "") or "")
-            args = _coerce_args(call_obj.get("args", ""))
-            steps.append(ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args)))
+            meta_val = call_obj.get("meta", None)
+            meta: Optional[Dict[str, Any]] = None
+            if meta_val is not None:
+                meta = _require_dict(meta_val, f"steps[{idx}].call.meta")
+
+            if version == "1":
+                args: Any = _coerce_args_v1(call_obj.get("args", ""))
+            else:
+                args = call_obj.get("args", None)
+            steps.append(
+                ToolCallStep(
+                    type="tool_call",
+                    call=ToolCallPayload(tool=tool, target=target, args=args, meta=meta),
+                )
+            )
             continue
 
         if step_type == "end":

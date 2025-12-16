@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 from lmao.plugin_helpers import safe_target_path
@@ -32,14 +32,18 @@ def _error(message: str) -> str:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
-    command = str(args or target).strip()
+    if isinstance(args, dict):
+        command = str(args.get("command") or args.get("cmd") or "").strip()
+    else:
+        command = str(args or target).strip()
     if not command:
         return _error("bash command is empty")
 

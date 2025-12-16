@@ -65,6 +65,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--silent-tools", action="store_true", help="Do not print tool outputs to console (still sent to model)")
     parser.add_argument("--no-stats", action="store_true", help="Disable per-turn stats (tokens, latency, bytes) in the console prompt/output")
     parser.add_argument("--prompt-file", type=str, default=None, help="Read initial prompt from file")
+    parser.add_argument(
+        "--multiline",
+        action="store_true",
+        help="Read user prompts as multiline until EOF (Ctrl-D; Windows: Ctrl-Z + Enter). Without this flag, Enter submits; multi-line paste is auto-joined into one prompt.",
+    )
     parser.add_argument("--mode", choices=["normal", "yolo", "ro", "readonly", "read-only"], default="normal", help="Safety mode: read-only disables destructive tools/plugins; yolo enables risky plugins; default: normal")
     parser.add_argument("--yolo", action="store_true", help="Legacy: enable unsafe 'bash' tool with per-command confirmation (use --mode yolo instead)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log in the working directory")
@@ -138,6 +143,7 @@ def main() -> None:
             yolo_enabled=yolo_enabled,
             read_only=read_only,
             show_stats=not args.no_stats,
+            multiline=args.multiline,
             plugin_dirs=[built_in_plugins_dir],
             debug_logger=debug_logger,
         )

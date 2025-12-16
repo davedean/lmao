@@ -133,3 +133,41 @@ class ProtocolParsingTests(TestCase):
         turn = parse_assistant_turn(raw, allowed_tools=["read"])
         self.assertEqual("assistant_turn", turn.type)
         self.assertEqual(1, len(turn.steps))
+
+    def test_parses_v2_tool_call_with_structured_args_and_meta(self) -> None:
+        raw = json.dumps(
+            {
+                "type": "assistant_turn",
+                "version": "2",
+                "steps": [
+                    {
+                        "type": "tool_call",
+                        "call": {
+                            "tool": "read",
+                            "target": "a.txt",
+                            "args": {"lines": "1-2"},
+                            "meta": {"timeout_s": 5},
+                        },
+                    }
+                ],
+            }
+        )
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("2", turn.version)
+        step = turn.steps[0]
+        self.assertEqual("tool_call", step.type)
+        self.assertEqual({"lines": "1-2"}, getattr(step, "call").args)
+        self.assertEqual({"timeout_s": 5}, getattr(step, "call").meta)
+
+    def test_rejects_v2_non_object_meta(self) -> None:
+        raw = json.dumps(
+            {
+                "type": "assistant_turn",
+                "version": "2",
+                "steps": [
+                    {"type": "tool_call", "call": {"tool": "read", "target": "a", "args": {}, "meta": "nope"}}
+                ],
+            }
+        )
+        with self.assertRaises(ProtocolError):
+            parse_assistant_turn(raw, allowed_tools=["read"])

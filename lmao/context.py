@@ -5,12 +5,32 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 from .plugins import PluginTool
 
-def build_tool_prompt(allowed_tools: Sequence[str], read_only: bool) -> str:
+def _format_tool_catalog(allowed_tools: Sequence[str], plugins: Optional[Sequence[PluginTool]]) -> str:
+    if not allowed_tools:
+        return "(no tools discovered)"
     resolved = list(allowed_tools)
-    tool_list = ", ".join(resolved) if resolved else "(no tools discovered)"
+    by_name: Dict[str, PluginTool] = {}
+    if plugins:
+        by_name = {tool.name: tool for tool in plugins}
+    lines: List[str] = []
+    for name in resolved:
+        tool = by_name.get(name)
+        if tool is None:
+            lines.append(f"- {name}")
+            continue
+        lines.append(f"- {tool.name}: {tool.description}")
+        for ex in (tool.usage_examples or [])[:3]:
+            lines.append(f"  usage: {ex}")
+    return "\n".join(lines)
+
+
+def build_tool_prompt(allowed_tools: Sequence[str], read_only: bool, plugins: Optional[Sequence[PluginTool]] = None) -> str:
+    resolved = list(allowed_tools)
+    tool_catalog = _format_tool_catalog(resolved, plugins)
     prompt_lines = [
         "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
         "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"1\",\"steps\":[...]}",
+        "Protocol v2 is also accepted (version=\"2\") and allows structured tool call args/meta.",
         "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
         "Steps: think | tool_call | message | end. Tool outputs are JSON with success + data/error.",
         "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
@@ -20,7 +40,8 @@ def build_tool_prompt(allowed_tools: Sequence[str], read_only: bool) -> str:
         "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
         "Tool calls: {\"type\":\"tool_call\",\"call\":{\"tool\":\"read\",\"target\":\"README.md\",\"args\":\"lines:1-40\"}}",
         "Example (valid JSON): {\"type\":\"assistant_turn\",\"version\":\"1\",\"steps\":[{\"type\":\"tool_call\",\"call\":{\"tool\":\"ls\",\"target\":\"\",\"args\":\"\"}}]}",
-        f"Available tools (including plugins): {tool_list}.",
+        "Available tools (including plugins):",
+        tool_catalog,
         "Paths are relative to the working directory; do not escape with .. or absolute paths.",
         "Skills: only discuss/list skills when the user asks; call list_skills only on explicit user request (or if a requested skill needs a path); call skill_guide for skill format/rules.",
     ]
@@ -127,7 +148,7 @@ def gather_context(workdir: Path) -> NotesContext:
 
 
 def build_system_message(workdir: Path, notes: NotesContext, initial_task_list: Optional[str] = None, read_only: bool = False, allowed_tools: Sequence[str] = (), plugins: Optional[Sequence[PluginTool]] = None) -> Dict[str, str]:
-    tool_prompt = build_tool_prompt(list(allowed_tools), read_only)
+    tool_prompt = build_tool_prompt(list(allowed_tools), read_only, plugins=plugins)
     content = (
         f"{tool_prompt}\n"
         f"Working directory: {workdir}\n"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import inspect
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -48,8 +49,19 @@ def plugin_allowed(plugin: PluginTool, read_only: bool, yolo_enabled: bool) -> b
     return plugin.allow_in_normal
 
 
-def confirm_plugin_run(plugin: PluginTool, target: str, args: str) -> bool:
-    prompt = f"[{plugin.name}] allow run? target={target!r} args={args!r} [y/N]: "
+def _format_args_for_prompt(args: Any) -> str:
+    if args is None:
+        return ""
+    if isinstance(args, str):
+        return args
+    try:
+        return json.dumps(args, ensure_ascii=False)
+    except Exception:
+        return str(args)
+
+
+def confirm_plugin_run(plugin: PluginTool, target: str, args: Any) -> bool:
+    prompt = f"[{plugin.name}] allow run? target={target!r} args={_format_args_for_prompt(args)!r} [y/N]: "
     try:
         approval = input(prompt).strip().lower()
     except EOFError:
@@ -71,11 +83,12 @@ def run_tool(
     tool = tool_call.tool
     target = tool_call.target
     args = tool_call.args
+    meta = getattr(tool_call, "meta", None)
 
     if debug_logger:
         debug_logger.log(
             "tool.dispatch",
-            f"tool={tool} target={target!r} args={args!r} base={base} extra_roots={[str(r) for r in extra_roots]}",
+            f"tool={tool} target={target!r} args={_format_args_for_prompt(args)!r} meta={meta!r} base={base} extra_roots={[str(r) for r in extra_roots]}",
         )
 
     plugins = plugin_tools or {}
@@ -97,15 +110,36 @@ def run_tool(
         if not confirm_plugin_run(plugin, target, args):
             return json_error(tool, f"plugin '{tool}' not approved by user")
     try:
-        result = plugin.handler(
-            target,
-            args,
-            base,
-            extra_roots,
-            skill_roots,
-            task_manager,
-            debug_logger,
-        )
+        handler = plugin.handler
+        try:
+            sig = inspect.signature(handler)
+            params = list(sig.parameters.values())
+            accepts_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+            accepts_meta = accepts_varargs or len(params) >= 8
+        except Exception:
+            accepts_meta = False
+
+        if accepts_meta:
+            result = handler(
+                target,
+                args,
+                base,
+                extra_roots,
+                skill_roots,
+                task_manager,
+                debug_logger,
+                meta,
+            )
+        else:
+            result = handler(
+                target,
+                args,
+                base,
+                extra_roots,
+                skill_roots,
+                task_manager,
+                debug_logger,
+            )
         if not isinstance(result, str):
             return json_error(tool, "plugin handlers must return a JSON string")
         return result
@@ -113,4 +147,3 @@ def run_tool(
         if debug_logger:
             debug_logger.log("plugin.error", f"tool={tool} path={plugin.path} error={exc}")
         return json_error(tool, f"plugin '{tool}' failed: {exc}")
-

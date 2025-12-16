@@ -1,10 +1,14 @@
 import json
 import tempfile
+import time
 from pathlib import Path
 from unittest import TestCase
+from unittest.mock import patch
 
 from lmao.plugins import discover_plugins
 from lmao.tools import ToolCall, run_tool
+from lmao.task_list import TaskListManager
+from lmao.async_jobs import get_async_job_manager
 
 
 class AsyncToolsTests(TestCase):
@@ -125,3 +129,112 @@ class AsyncToolsTests(TestCase):
         )
         poll_payload = json.loads(poll_result)
         self.assertTrue(poll_payload["success"])
+
+    def test_async_tail_track_task_marks_complete_on_finish(self) -> None:
+        tasks = TaskListManager()
+        log_path = self.base / "app.log"
+        log_path.write_text("", encoding="utf-8")
+
+        start = ToolCall(tool="async_tail", target="app.log", args="start_at=end track_task=true")
+        start_result = run_tool(
+            start,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=False,
+            read_only=True,
+            plugin_tools=self.plugins,
+            task_manager=tasks,
+        )
+        start_payload = json.loads(start_result)
+        self.assertTrue(start_payload["success"])
+        self.assertTrue(start_payload["data"]["task_added"])
+        self.assertEqual(1, len(tasks.tasks))
+        self.assertFalse(tasks.tasks[0].done)
+
+        job_id = start_payload["data"]["job_id"]
+
+        manager = get_async_job_manager()
+        self.assertTrue(manager.stop(job_id))
+
+        poll = ToolCall(tool="async_poll", target=job_id, args="0")
+        poll_result = run_tool(
+            poll,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=False,
+            read_only=True,
+            plugin_tools=self.plugins,
+            task_manager=tasks,
+        )
+        poll_payload = json.loads(poll_result)
+        self.assertTrue(poll_payload["success"])
+        self.assertTrue(poll_payload["data"]["task_updated"])
+        self.assertTrue(tasks.tasks[0].done)
+
+    def test_async_bash_strips_trailing_track_task_token(self) -> None:
+        tasks = TaskListManager()
+        call = ToolCall(tool="async_bash", target="", args="python3 -c \"print('ok')\" track_task=true")
+        with patch("builtins.input", return_value="y"):
+            start_result = run_tool(
+                call,
+                base=self.base,
+                extra_roots=[],
+                skill_roots=[],
+                yolo_enabled=False,
+                read_only=False,
+                plugin_tools=self.plugins,
+                task_manager=tasks,
+            )
+        start_payload = json.loads(start_result)
+        self.assertTrue(start_payload["success"])
+        self.assertTrue(start_payload["data"]["task_added"])
+        self.assertEqual("python3 -c \"print('ok')\"", start_payload["data"]["command"])
+
+        job_id = start_payload["data"]["job_id"]
+        for _ in range(50):
+            poll = ToolCall(tool="async_poll", target=job_id, args="0")
+            poll_result = run_tool(
+                poll,
+                base=self.base,
+                extra_roots=[],
+                skill_roots=[],
+                yolo_enabled=False,
+                read_only=True,
+                plugin_tools=self.plugins,
+                task_manager=tasks,
+            )
+            payload = json.loads(poll_result)
+            self.assertTrue(payload["success"])
+            status = payload["data"]["status"]
+            if status in ("done", "error", "canceled"):
+                self.assertIn(status, ("done", "error"))
+                break
+            time.sleep(0.01)
+        else:
+            self.fail("async_bash job did not finish in time")
+
+    def test_async_bash_structured_args_and_meta(self) -> None:
+        tasks = TaskListManager()
+        call = ToolCall(
+            tool="async_bash",
+            target="",
+            args={"command": "python3 -c \"print('ok')\""},
+            meta={"track_task": True},
+        )
+        with patch("builtins.input", return_value="y"):
+            start_result = run_tool(
+                call,
+                base=self.base,
+                extra_roots=[],
+                skill_roots=[],
+                yolo_enabled=False,
+                read_only=False,
+                plugin_tools=self.plugins,
+                task_manager=tasks,
+            )
+        start_payload = json.loads(start_result)
+        self.assertTrue(start_payload["success"])
+        self.assertTrue(start_payload["data"]["task_added"])
+        self.assertEqual("python3 -c \"print('ok')\"", start_payload["data"]["command"])

@@ -15,6 +15,7 @@ from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_as
 from .task_list import TaskListManager
 from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
+from .user_input import read_user_prompt
 
 COLOR_BLUE = "\033[94m"
 COLOR_GREEN = "\033[92m"
@@ -331,11 +332,11 @@ def run_agent_turn(
                 continue
 
             for call in tool_call_payloads:
-                tool_call = ToolCall(tool=call.tool, target=call.target, args=call.args)
+                tool_call = ToolCall(tool=call.tool, target=call.target, args=call.args, meta=call.meta)
                 if debug_logger:
                     debug_logger.log(
                         "tool.call",
-                        f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r}",
+                        f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} meta={tool_call.meta!r}",
                     )
                 output = run_tool(
                     tool_call,
@@ -430,6 +431,7 @@ def run_loop(
     yolo_enabled: bool,
     read_only: bool,
     show_stats: bool,
+    multiline: bool = False,
     plugin_dirs: Optional[Sequence[Path]] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> None:
@@ -487,10 +489,10 @@ def run_loop(
         debug_logger.log("user.initial_prompt", initial_prompt)
 
     if user_input is None:
-        try:
-            user_input = input(user_prompt).strip()
-        except EOFError:
+        result = read_user_prompt(user_prompt, multiline_default=multiline)
+        if result.eof:
             return
+        user_input = result.text or ""
         if debug_logger:
             debug_logger.log("user.input", f"turn={turn} content={user_input}")
 
@@ -501,12 +503,16 @@ def run_loop(
                 debug_logger.log("loop.stop", f"reason=max_turns reached={max_turns}")
             return
         if not user_input:
-            try:
-                user_input = input(user_prompt).strip()
-            except EOFError:
+            result = read_user_prompt(user_prompt, multiline_default=multiline)
+            if result.eof:
                 return
+            user_input = result.text or ""
             if debug_logger:
                 debug_logger.log("user.input", f"turn={turn} content={user_input}")
+            continue
+
+        if not user_input.strip():
+            user_input = ""
             continue
 
         messages.append({"role": "user", "content": user_input})

@@ -27,6 +27,26 @@ def run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_l
     return json.dumps({{"tool": "{name}", "success": True, "data": {{"target": target, "args": args}}}})
 """
 
+META_PLUGIN_TEMPLATE = """from lmao.plugins import PLUGIN_API_VERSION
+
+PLUGIN = {{
+    "name": "{name}",
+    "description": "test meta plugin",
+    "api_version": PLUGIN_API_VERSION,
+    "is_destructive": False,
+    "allow_in_read_only": True,
+    "allow_in_normal": True,
+    "allow_in_yolo": True,
+    "always_confirm": False,
+    "usage": "{{'tool':'{name}','target':'','args':''}}",
+}}
+
+
+def run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None, meta=None):
+    import json
+    return json.dumps({{"tool": "{name}", "success": True, "data": {{"target": target, "args": args, "meta": meta}}}})
+"""
+
 MULTI_PLUGIN_TEMPLATE = """from lmao.plugins import PLUGIN_API_VERSION
 
 PLUGINS = [
@@ -98,6 +118,15 @@ class PluginLoaderTests(TestCase):
         plugin_dir.mkdir(parents=True)
         (plugin_dir / "tool.py").write_text(
             MULTI_PLUGIN_TEMPLATE.format(name_a=name_a, name_b=name_b),
+            encoding="utf-8",
+        )
+        return plugin_dir
+
+    def _write_meta_plugin(self, name: str = "meta_plugin") -> Path:
+        plugin_dir = self.base / "plugins" / name
+        plugin_dir.mkdir(parents=True)
+        (plugin_dir / "tool.py").write_text(
+            META_PLUGIN_TEMPLATE.format(name=name),
             encoding="utf-8",
         )
         return plugin_dir
@@ -235,6 +264,22 @@ class PluginLoaderTests(TestCase):
         self.assertTrue(payload_b["success"])
         self.assertEqual("multi_b", payload_b["tool"])
 
+    def test_dispatch_passes_meta_when_supported(self) -> None:
+        plugin_dir = self._write_meta_plugin()
+        plugins = discover_plugins([plugin_dir], self.base)
+        call = ToolCall(tool="meta_plugin", target="t", args={"x": 1}, meta={"timeout_s": 1})
+        result = run_tool(
+            call,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=False,
+            plugin_tools=plugins,
+        )
+        payload = json.loads(result)
+        self.assertTrue(payload["success"])
+        self.assertEqual({"timeout_s": 1}, payload["data"]["meta"])
+
 
 class BuiltinPluginTests(TestCase):
     def setUp(self) -> None:
@@ -306,6 +351,7 @@ class BuiltinPluginTests(TestCase):
             "git_status",
             "git_diff",
             "bash",
+            "tool_help",
         }
         self.assertTrue(core_names.issubset(self.plugins.keys()))
 

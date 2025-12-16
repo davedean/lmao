@@ -83,12 +83,13 @@ def _load_spec(raw_args: str) -> Optional[_PatchSpec]:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)
@@ -100,7 +101,11 @@ def run(
     if target_path.is_dir() or str(target).rstrip().endswith(("/", "\\")):
         return _error(f"'{target}' is a directory; patch requires a file path")
 
-    spec = _load_spec(str(args))
+    if isinstance(args, dict):
+        raw_args = json.dumps(args, ensure_ascii=False)
+    else:
+        raw_args = str(args)
+    spec = _load_spec(raw_args)
     if not spec:
         return _error("invalid patch args; expected JSON {'range':'lines:10-20','content':'...'} or 'lines:10-20\\n...'")
 
@@ -140,4 +145,3 @@ def run(
         "bytes": len(patched.encode("utf-8")),
     }
     return _success(data)
-

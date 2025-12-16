@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Callable, Dict, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, cast
 
 from .debug_log import DebugLogger
 
@@ -72,13 +72,17 @@ def _validate_manifest(manifest: Dict[str, Any]) -> Optional[str]:
         value = manifest.get(key, None)
         if value is not None and not isinstance(value, bool):
             return f"{key} must be a boolean when provided"
-    if manifest.get("always_confirm", None) is not None and not isinstance(manifest.get("always_confirm"), bool):
+    if manifest.get("always_confirm", None) is not None and not isinstance(
+        manifest.get("always_confirm"), bool
+    ):
         return "always_confirm must be a boolean when provided"
     return None
 
 
 def _load_module(path: Path) -> Optional[ModuleType]:
-    spec = importlib.util.spec_from_file_location(f"lmao_plugin_{path.stem}_{abs(hash(path))}", path)
+    spec = importlib.util.spec_from_file_location(
+        f"lmao_plugin_{path.stem}_{abs(hash(path))}", path
+    )
     if spec is None or spec.loader is None:
         return None
     module = importlib.util.module_from_spec(spec)
@@ -125,7 +129,9 @@ def _create_plugin_tool(
     return PluginTool(
         name=str(manifest["name"]).strip(),
         description=str(manifest["description"]).strip(),
-        input_schema=str(manifest["input_schema"]).strip() if manifest.get("input_schema") else None,
+        input_schema=str(manifest["input_schema"]).strip()
+        if manifest.get("input_schema")
+        else None,
         usage_examples=usage_examples,
         details=details,
         is_destructive=is_destructive,
@@ -165,23 +171,34 @@ def load_plugins(
         if debug_logger:
             debug_logger.log("plugin.missing_fields", f"path={resolved} missing=run")
         return []
+    # Type: handler is validated to be callable and return str
+    handler = cast(Callable[..., str], handler)
 
     multi_manifests = getattr(module, "PLUGINS", None)
     if multi_manifests is not None:
         if not isinstance(multi_manifests, list) or not multi_manifests:
             if debug_logger:
-                debug_logger.log("plugin.invalid_manifest", f"path={resolved} error=PLUGINS must be a non-empty list")
+                debug_logger.log(
+                    "plugin.invalid_manifest",
+                    f"path={resolved} error=PLUGINS must be a non-empty list",
+                )
             return []
         tools: List[PluginTool] = []
         for idx, manifest in enumerate(multi_manifests):
             if not isinstance(manifest, dict):
                 if debug_logger:
-                    debug_logger.log("plugin.invalid_manifest", f"path={resolved} error=PLUGINS[{idx}] must be a dict")
+                    debug_logger.log(
+                        "plugin.invalid_manifest",
+                        f"path={resolved} error=PLUGINS[{idx}] must be a dict",
+                    )
                 return []
             error = _validate_manifest(manifest)
             if error:
                 if debug_logger:
-                    debug_logger.log("plugin.invalid_manifest", f"path={resolved} error=PLUGINS[{idx}] {error}")
+                    debug_logger.log(
+                        "plugin.invalid_manifest",
+                        f"path={resolved} error=PLUGINS[{idx}] {error}",
+                    )
                 return []
             tool_name = str(manifest.get("name", "")).strip()
 
@@ -191,40 +208,67 @@ def load_plugins(
                 base: Path,
                 extra_roots,
                 skill_roots,
+                _handler: Callable[..., str],
                 task_manager=None,
                 debug_logger: Optional[DebugLogger] = None,
                 meta: Optional[Dict[str, Any]] = None,
                 _tool_name: str = tool_name,
-                _handler: Callable[..., str] = handler,
             ) -> str:
                 try:
                     sig = inspect.signature(_handler)
                     params = list(sig.parameters.values())
-                    accepts_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+                    accepts_varargs = any(
+                        p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+                    )
                     accepts_meta = accepts_varargs or len(params) >= 9
                 except Exception:
                     accepts_meta = False
                 if accepts_meta:
-                    return _handler(_tool_name, target, args, base, extra_roots, skill_roots, task_manager, debug_logger, meta)
-                return _handler(_tool_name, target, args, base, extra_roots, skill_roots, task_manager, debug_logger)
+                    return _handler(
+                        _tool_name,
+                        target,
+                        args,
+                        base,
+                        extra_roots,
+                        skill_roots,
+                        task_manager,
+                        debug_logger,
+                        meta,
+                    )
+                return _handler(
+                    _tool_name,
+                    target,
+                    args,
+                    base,
+                    extra_roots,
+                    skill_roots,
+                    task_manager,
+                    debug_logger,
+                )
 
             try:
                 tools.append(_create_plugin_tool(manifest, _wrapped, path=resolved))
             except Exception as exc:
                 if debug_logger:
-                    debug_logger.log("plugin.create_error", f"path={resolved} error={exc}")
+                    debug_logger.log(
+                        "plugin.create_error", f"path={resolved} error={exc}"
+                    )
                 return []
         return tools
 
     manifest = getattr(module, "PLUGIN", None)
     if not manifest or not isinstance(manifest, dict):
         if debug_logger:
-            debug_logger.log("plugin.missing_fields", f"path={resolved} missing=PLUGIN/PLUGINS")
+            debug_logger.log(
+                "plugin.missing_fields", f"path={resolved} missing=PLUGIN/PLUGINS"
+            )
         return []
     error = _validate_manifest(manifest)
     if error:
         if debug_logger:
-            debug_logger.log("plugin.invalid_manifest", f"path={resolved} error={error}")
+            debug_logger.log(
+                "plugin.invalid_manifest", f"path={resolved} error={error}"
+            )
         return []
     try:
         return [_create_plugin_tool(manifest, handler, path=resolved)]
@@ -245,11 +289,18 @@ def load_plugin(
 
     Prefer `load_plugins()` for new code, as a tool.py may define multiple virtual tools via `PLUGINS`.
     """
-    tools = load_plugins(path, base, debug_logger=debug_logger, allow_outside_base=allow_outside_base)
+    tools = load_plugins(
+        path, base, debug_logger=debug_logger, allow_outside_base=allow_outside_base
+    )
     return tools[0] if tools else None
 
 
-def discover_plugins(plugin_dirs: Iterable[Path], base: Path, debug_logger: Optional[DebugLogger] = None, allow_outside_base: bool = False) -> Dict[str, PluginTool]:
+def discover_plugins(
+    plugin_dirs: Iterable[Path],
+    base: Path,
+    debug_logger: Optional[DebugLogger] = None,
+    allow_outside_base: bool = False,
+) -> Dict[str, PluginTool]:
     plugins: Dict[str, PluginTool] = {}
     for directory in plugin_dirs:
         try:
@@ -263,7 +314,12 @@ def discover_plugins(plugin_dirs: Iterable[Path], base: Path, debug_logger: Opti
                 debug_logger.log("plugin.dir_missing", f"path={resolved_dir}")
             continue
         for plugin_path in resolved_dir.rglob("tool.py"):
-            loaded = load_plugins(plugin_path, base, debug_logger=debug_logger, allow_outside_base=allow_outside_base)
+            loaded = load_plugins(
+                plugin_path,
+                base,
+                debug_logger=debug_logger,
+                allow_outside_base=allow_outside_base,
+            )
             for plugin in loaded:
                 if plugin.name in plugins:
                     if debug_logger:

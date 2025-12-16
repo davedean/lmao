@@ -27,6 +27,47 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
   python -m lmao --prompt-file ./prompt.txt
   ```
 
+## Persistent configuration
+Per-user defaults can live in `${XDG_CONFIG_HOME:-~/.config}/agents/lmao.conf` (`%APPDATA%\agents\lmao.conf` on Windows). When running, flag values come first, then environment variables, then the config file, and finally the bundled defaults. Use `--config PATH` to change the config file location, `--no-config` to ignore stored preferences for a single run, or `--print-config` to show the resolved settings (secrets are redacted) before exiting. Run `python -m lmao --config-init` to write the default `lmao.conf` at the resolved path when it does not already exist.
+
+The INI-style file holds repeatable preferences such as provider endpoints, sampling parameters, loop limits, and tool-output truncation. Store OpenRouter metadata here too (referer/title) but keep secrets in the environment; you can name the env var that holds the API key with `api_key_env` instead of storing the key itself. When the automatic free-model selector is enabled, you can also keep lightweight preferences here—`free_default_model` is tried before ranking, and `free_blacklist` lists comma- or newline-separated model IDs that should never be picked automatically.
+
+Example `lmao.conf`:
+```ini
+[core]
+provider = lmstudio
+mode = normal
+multiline = false
+silent_tools = false
+no_stats = false
+max_turns =
+workdir =
+
+[lmstudio]
+endpoint = http://localhost:1234/v1/chat/completions
+model = qwen3-4b-instruct
+
+[openrouter]
+endpoint = https://openrouter.ai/api/v1/chat/completions
+model =
+http_referer =
+app_title =
+; Prefer env var for secrets:
+api_key_env = OPENROUTER_API_KEY
+free_default_model =
+free_blacklist =
+
+[generation]
+temperature = 0.2
+top_p =
+max_tokens =
+
+[tool_output]
+max_tool_lines = 8
+max_tool_chars = 400
+```
+Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/openrouter/free_models.json` so the user-facing `lmao.conf` stays focused on preferences.
+
 ## Behavior & Tools
 - Default tools: `read`, `write`, `mkdir`, `move`, `ls`, `find`, `grep`, `list_skills`, plus task-list helpers (`add_task`, `complete_task`, `delete_task`, `list_tasks`). Git tools (`git_add`, `git_commit`) ship as plugins under `lmao/tools/git-*` and are available in normal/yolo modes (blocked in `--mode readonly`). Tool outputs are JSON (`success` + `data`/`error`) to keep paths with spaces unambiguous.
 - Repo instructions (AGENTS): the loop discovers the nearest `AGENTS.md` path but does not preload its contents; call `read_agents` if the model needs the repo instructions.
@@ -50,16 +91,18 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
 
 ## CLI Flags (excerpt)
 - Core: `--provider`, `--endpoint`, `--model`, `--temperature`, `--top-p`, `--max-tokens`, `--workdir`
+- OpenRouter free models: `--free` (equivalent to `--model free`) enables automatic selection of a free tier model, obeying `free_default_model`/`free_blacklist` preferences.
 - Safety: `--mode yolo` (opt into risky flows/plugins) or `--mode readonly` (disable writes/moves/git/bash and plugins that opt out of read-only); legacy `--yolo`/`--read-only` remain for compatibility
 - Extensibility: user-specified plugin directories are planned but not yet supported; current runs load the shipped plugins from `lmao/tools/` (inside the installed package).
 - Loop control: `--max-turns`, `--silent-tools`, `--max-tool-lines`, `--max-tool-chars`
 - Output: `--no-stats` (hide token/latency/bytes stats in the prompt/output)
 - Prompting: `--prompt-file` (seed long prompts), optional interactive prompt when the positional prompt is omitted
 - Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory
+- Config: `--config PATH`, `--no-config`, `--print-config` (print the resolved defaults without secrets), `--config-init` (write the default config if missing)
 
 Environment defaults:
 - LM Studio: `LM_STUDIO_URL`, `LM_STUDIO_MODEL`
-- OpenRouter: `OPENROUTER_API_KEY` (required), optional `OPENROUTER_MODEL`, `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE`
+- OpenRouter: `OPENROUTER_API_KEY` (required); `OPENROUTER_MODEL` can be a concrete ID or `free`, plus optional `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE`
 
 ## Safety Notes
 - Git and bash plugins are available by default but blocked in `--read-only`; they still require a git repo. Bash always asks for confirmation; other plugins can opt in with `always_confirm`.

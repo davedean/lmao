@@ -29,8 +29,8 @@ def build_tool_prompt(allowed_tools: Sequence[str], read_only: bool, plugins: Op
     tool_catalog = _format_tool_catalog(resolved, plugins)
     prompt_lines = [
         "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
-        "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"1\",\"steps\":[...]}",
-        "Protocol v2 is also accepted (version=\"2\") and allows structured tool call args/meta.",
+        "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]}",
+        "Protocol v1 is still accepted, but prefer v2 (structured args/meta).",
         "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
         "Steps: think | tool_call | message | end. Tool outputs are JSON with success + data/error.",
         "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
@@ -38,8 +38,9 @@ def build_tool_prompt(allowed_tools: Sequence[str], read_only: bool, plugins: Op
         "Task steps: {\"type\":\"add_task\",\"args\":{\"task\":\"...\"}} and {\"type\":\"list_tasks\"} (also complete_task/delete_task).",
         "Message purpose values: progress | clarification | cannot_finish | final (default: progress).",
         "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
-        "Tool calls: {\"type\":\"tool_call\",\"call\":{\"tool\":\"read\",\"target\":\"README.md\",\"args\":\"lines:1-40\"}}",
-        "Example (valid JSON): {\"type\":\"assistant_turn\",\"version\":\"1\",\"steps\":[{\"type\":\"tool_call\",\"call\":{\"tool\":\"ls\",\"target\":\"\",\"args\":\"\"}}]}",
+        "Tool calls (v1): {\"type\":\"tool_call\",\"call\":{\"tool\":\"read\",\"target\":\"README.md\",\"args\":\"lines:1-40\"}}",
+        "Tool calls (v2): {\"type\":\"tool_call\",\"call\":{\"tool\":\"async_bash\",\"target\":\"\",\"args\":{\"command\":\"sleep 20\"},\"meta\":{\"track_task\":true}}}",
+        "Example (valid JSON): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"tool_call\",\"call\":{\"tool\":\"ls\",\"target\":\"\",\"args\":\"\"}}]}",
         "Available tools (including plugins):",
         tool_catalog,
         "Paths are relative to the working directory; do not escape with .. or absolute paths.",

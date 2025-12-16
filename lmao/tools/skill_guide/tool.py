@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 
@@ -15,8 +15,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "none",
-    "usage": "{'tool':'skill_guide','target':'','args':''}",
+    "input_schema": "none (v2 args ignored)",
+    "usage": [
+        "{\"tool\":\"skill_guide\",\"target\":\"\",\"args\":\"\"}",
+        "{\"tool\":\"skill_guide\",\"target\":\"\",\"args\":{}}",
+    ],
 }
 
 
@@ -60,12 +63,12 @@ def _success(data: dict) -> str:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
     return _success({"guide": SKILL_GUIDE})
-

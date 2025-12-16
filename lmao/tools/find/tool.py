@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 from lmao.plugin_helpers import normalize_path_for_output, safe_target_path
@@ -17,8 +17,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "target directory",
-    "usage": "{'tool':'find','target':'.','args':''}",
+    "input_schema": "v2 args: {max_entries:int, include_dotfiles:bool}; v1 args ignored",
+    "usage": [
+        "{\"tool\":\"find\",\"target\":\".\",\"args\":\"\"}",
+        "{\"tool\":\"find\",\"target\":\".\",\"args\":{\"max_entries\":200}}",
+    ],
 }
 
 
@@ -32,12 +35,13 @@ def _error(message: str) -> str:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)
@@ -46,12 +50,24 @@ def run(
 
     if not target_path.exists():
         return _error(f"path '{target}' not found")
+    max_entries = 200
+    include_dotfiles = False
+    if isinstance(args, dict):
+        try:
+            max_entries = int(args.get("max_entries", max_entries))
+        except Exception:
+            max_entries = 200
+        include_dotfiles = bool(args.get("include_dotfiles", False))
+
     results = []
     truncated = False
     try:
         for root, dirs, files in os.walk(target_path):
-            dirs[:] = [d for d in dirs if not d.startswith(".")]
-            visible_files = [f for f in files if not f.startswith(".")]
+            if not include_dotfiles:
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                visible_files = [f for f in files if not f.startswith(".")]
+            else:
+                visible_files = list(files)
             for name in sorted(visible_files + dirs):
                 path = Path(root) / name
                 rel_display = normalize_path_for_output(path, base)
@@ -60,7 +76,7 @@ def run(
                     "path": rel_display,
                     "type": "dir" if path.is_dir() else "file",
                 })
-                if len(results) >= 200:
+                if len(results) >= max_entries:
                     truncated = True
                     break
             if truncated:

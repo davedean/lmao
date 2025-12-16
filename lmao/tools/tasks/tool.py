@@ -17,8 +17,11 @@ PLUGINS = [
         "allow_in_normal": True,
         "allow_in_yolo": True,
         "always_confirm": False,
-        "input_schema": "task text in args (or target)",
-        "usage": "{'tool':'add_task','target':'','args':'task description'}",
+        "input_schema": "v2 args: {task:'...'}; v1 args: task string; target fallback supported",
+        "usage": [
+            "{\"tool\":\"add_task\",\"target\":\"\",\"args\":\"task description\"}",
+            "{\"tool\":\"add_task\",\"target\":\"\",\"args\":{\"task\":\"task description\"}}",
+        ],
     },
     {
         "name": "complete_task",
@@ -29,8 +32,11 @@ PLUGINS = [
         "allow_in_normal": True,
         "allow_in_yolo": True,
         "always_confirm": False,
-        "input_schema": "task id in args (or target)",
-        "usage": "{'tool':'complete_task','target':'','args':'task id'}",
+        "input_schema": "v2 args: {id: int}; v1 args: id string; target fallback supported",
+        "usage": [
+            "{\"tool\":\"complete_task\",\"target\":\"\",\"args\":\"1\"}",
+            "{\"tool\":\"complete_task\",\"target\":\"\",\"args\":{\"id\":1}}",
+        ],
     },
     {
         "name": "delete_task",
@@ -41,8 +47,11 @@ PLUGINS = [
         "allow_in_normal": True,
         "allow_in_yolo": True,
         "always_confirm": False,
-        "input_schema": "task id in args (or target)",
-        "usage": "{'tool':'delete_task','target':'','args':'task id'}",
+        "input_schema": "v2 args: {id: int}; v1 args: id string; target fallback supported",
+        "usage": [
+            "{\"tool\":\"delete_task\",\"target\":\"\",\"args\":\"1\"}",
+            "{\"tool\":\"delete_task\",\"target\":\"\",\"args\":{\"id\":1}}",
+        ],
     },
     {
         "name": "list_tasks",
@@ -53,8 +62,11 @@ PLUGINS = [
         "allow_in_normal": True,
         "allow_in_yolo": True,
         "always_confirm": False,
-        "input_schema": "none",
-        "usage": "{'tool':'list_tasks','target':'','args':''}",
+        "input_schema": "none (v2 args ignored)",
+        "usage": [
+            "{\"tool\":\"list_tasks\",\"target\":\"\",\"args\":\"\"}",
+            "{\"tool\":\"list_tasks\",\"target\":\"\",\"args\":{}}",
+        ],
     },
 ]
 

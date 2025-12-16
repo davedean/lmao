@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 from lmao.plugin_helpers import normalize_path_for_output, safe_target_path
@@ -17,8 +17,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "target file/dir; args is pattern string",
-    "usage": "{'tool':'grep','target':'./path','args':'substring'}",
+    "input_schema": "v2 args: {pattern:'...'}; v1 args: pattern string",
+    "usage": [
+        "{\"tool\":\"grep\",\"target\":\"./path\",\"args\":\"substring\"}",
+        "{\"tool\":\"grep\",\"target\":\"./path\",\"args\":{\"pattern\":\"substring\"}}",
+    ],
 }
 
 MAX_FILE_BYTES = 2_000_000
@@ -34,14 +37,20 @@ def _error(message: str) -> str:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
-    pattern = str(args)
+    if isinstance(args, dict):
+        pattern = str(args.get("pattern") or args.get("query") or "")
+    else:
+        pattern = str(args)
+    if not pattern:
+        return _error("pattern is required")
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)
     except Exception:

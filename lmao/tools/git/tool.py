@@ -19,7 +19,10 @@ PLUGINS = [
         "allow_in_yolo": True,
         "always_confirm": False,
         "input_schema": "target ignored; args ignored",
-        "usage": "{'tool':'git_status','target':'','args':''}",
+        "usage": [
+            "{\"tool\":\"git_status\",\"target\":\"\",\"args\":\"\"}",
+            "{\"tool\":\"git_status\",\"target\":\"\",\"args\":{}}",
+        ],
     },
     {
         "name": "git_diff",
@@ -32,10 +35,10 @@ PLUGINS = [
         "always_confirm": False,
         "input_schema": "target optional path; args: '--staged' and/or '--stat'",
         "usage": [
-            "{'tool':'git_diff','target':'','args':''}",
-            "{'tool':'git_diff','target':'','args':'--staged'}",
-            "{'tool':'git_diff','target':'','args':'--stat'}",
-            "{'tool':'git_diff','target':'path/to/file','args':'--staged'}",
+            "{\"tool\":\"git_diff\",\"target\":\"\",\"args\":\"\"}",
+            "{\"tool\":\"git_diff\",\"target\":\"\",\"args\":\"--staged\"}",
+            "{\"tool\":\"git_diff\",\"target\":\"\",\"args\":{\"staged\":true,\"stat\":false}}",
+            "{\"tool\":\"git_diff\",\"target\":\"\",\"args\":{\"staged\":true,\"stat\":false,\"path\":\"path/to/file\"}}",
         ],
     },
     {
@@ -47,8 +50,11 @@ PLUGINS = [
         "allow_in_normal": True,
         "allow_in_yolo": True,
         "always_confirm": False,
-        "input_schema": "target: path to add; args ignored",
-        "usage": "{'tool':'git_add','target':'./path','args':''}",
+        "input_schema": "v2 args: {path:'./path'}; v1 target: path to add",
+        "usage": [
+            "{\"tool\":\"git_add\",\"target\":\"./path\",\"args\":\"\"}",
+            "{\"tool\":\"git_add\",\"target\":\"\",\"args\":{\"path\":\"./path\"}}",
+        ],
     },
     {
         "name": "git_commit",
@@ -59,8 +65,11 @@ PLUGINS = [
         "allow_in_normal": True,
         "allow_in_yolo": True,
         "always_confirm": False,
-        "input_schema": "args: commit message; target ignored",
-        "usage": "{'tool':'git_commit','target':'','args':'commit message'}",
+        "input_schema": "v2 args: {message:'...'}; v1 args: commit message string",
+        "usage": [
+            "{\"tool\":\"git_commit\",\"target\":\"\",\"args\":\"commit message\"}",
+            "{\"tool\":\"git_commit\",\"target\":\"\",\"args\":{\"message\":\"commit message\"}}",
+        ],
     },
 ]
 
@@ -183,6 +192,8 @@ def run(
         return _success(tool_name, data)
 
     if tool_name == "git_add":
+        if isinstance(args, dict) and not target:
+            target = str(args.get("path") or "")
         try:
             target_path = safe_target_path(target or ".", base, extra_roots)
         except Exception as exc:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 from lmao.context import find_nearest_agents, find_repo_root
@@ -16,8 +16,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "none",
-    "usage": "{'tool':'read_agents','target':'','args':''}",
+    "input_schema": "none (v2 args ignored)",
+    "usage": [
+        "{\"tool\":\"read_agents\",\"target\":\"\",\"args\":\"\"}",
+        "{\"tool\":\"read_agents\",\"target\":\"\",\"args\":{}}",
+    ],
 }
 
 
@@ -31,12 +34,13 @@ def _error(message: str) -> str:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
     try:
         repo_root = find_repo_root(base)
@@ -53,4 +57,3 @@ def run(
         return _success(data)
     except Exception as exc:
         return _error(f"unable to read AGENTS.md: {exc}")
-

@@ -17,8 +17,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": True,
-    "input_schema": "command string in args; target may be cwd",
-    "usage": "{'tool':'bash','target':'optional_cwd','args':'command'}",
+    "input_schema": "v2 args: {command:'...'}; v1 args: command string; target may be cwd",
+    "usage": [
+        "{\"tool\":\"bash\",\"target\":\"\",\"args\":\"echo ok\"}",
+        "{\"tool\":\"bash\",\"target\":\"\",\"args\":{\"command\":\"echo ok\"}}",
+    ],
 }
 
 

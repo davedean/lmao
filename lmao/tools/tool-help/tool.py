@@ -15,8 +15,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "args: tool name (e.g., 'async_tail'); target ignored",
-    "usage": "{'tool':'tool_help','target':'','args':'async_tail'}",
+    "input_schema": "v2 args: {tool:'name'}; v1 args: tool name string",
+    "usage": [
+        "{\"tool\":\"tool_help\",\"target\":\"\",\"args\":\"async_tail\"}",
+        "{\"tool\":\"tool_help\",\"target\":\"\",\"args\":{\"tool\":\"async_tail\"}}",
+    ],
 }
 
 
@@ -38,7 +41,10 @@ def run(
     debug_logger: Optional[object] = None,
     meta: Optional[dict] = None,
 ) -> str:
-    tool_name = str(args or target or "").strip()
+    if isinstance(args, dict):
+        tool_name = str(args.get("tool") or args.get("name") or target or "").strip()
+    else:
+        tool_name = str(args or target or "").strip()
     if not tool_name:
         return _error("tool_help args must be a tool name")
 

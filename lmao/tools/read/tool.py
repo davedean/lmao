@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from lmao.plugins import PLUGIN_API_VERSION
 from lmao.plugin_helpers import normalize_path_for_output, parse_line_range, safe_target_path
@@ -16,10 +16,12 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "target path; args optional line range string",
+    "input_schema": "v2 args: {range:'lines:10-20'} or {start:int,end:int}; v1 args: 'lines:10-20'",
     "usage": [
-        "{'tool':'read','target':'./filename','args':''}",
-        "{'tool':'read','target':'./filename','args':'lines:10-40'}",
+        "{\"tool\":\"read\",\"target\":\"./filename\",\"args\":\"\"}",
+        "{\"tool\":\"read\",\"target\":\"./filename\",\"args\":\"lines:10-40\"}",
+        "{\"tool\":\"read\",\"target\":\"./filename\",\"args\":{\"range\":\"lines:10-40\"}}",
+        "{\"tool\":\"read\",\"target\":\"./filename\",\"args\":{\"start\":10,\"end\":40}}",
     ],
 }
 
@@ -34,12 +36,13 @@ def _error(message: str) -> str:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)
@@ -53,7 +56,14 @@ def run(
     except Exception as exc:
         return _error(f"unable to read '{target}': {exc}")
 
-    line_range = parse_line_range(str(args))
+    line_range = None
+    if isinstance(args, dict):
+        if isinstance(args.get("start"), int) and isinstance(args.get("end"), int):
+            line_range = (int(args["start"]), int(args["end"]))
+        else:
+            line_range = parse_line_range(str(args.get("range") or args.get("lines") or ""))
+    else:
+        line_range = parse_line_range(str(args))
     truncated = False
     if line_range:
         start, end = line_range

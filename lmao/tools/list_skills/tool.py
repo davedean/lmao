@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterable, Optional, Sequence, Tuple
+from typing import Any, Iterable, Optional, Sequence, Tuple
 from lmao.plugins import PLUGIN_API_VERSION
 
 PLUGIN = {
@@ -14,8 +14,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "none",
-    "usage": "{'tool':'list_skills','target':'','args':''}",
+    "input_schema": "none (v2 args ignored)",
+    "usage": [
+        "{\"tool\":\"list_skills\",\"target\":\"\",\"args\":\"\"}",
+        "{\"tool\":\"list_skills\",\"target\":\"\",\"args\":{}}",
+    ],
 }
 
 
@@ -47,12 +50,13 @@ def _list_skill_info(skill_roots: Sequence[Path]) -> list[Tuple[str, Path]]:
 
 def run(
     target: str,
-    args: str,
+    args: Any,
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
     task_manager=None,
     debug_logger: Optional[object] = None,
+    meta: Optional[dict] = None,
 ) -> str:
     skills = _list_skill_info(skill_roots)
     data = [{"name": name, "path": str(path)} for name, path in skills]

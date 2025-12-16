@@ -20,8 +20,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "target path; args is file content",
-    "usage": "{'tool':'write','target':'./filename','args':'new content'}",
+    "input_schema": "v2 args: {content:'...'}; v1 args: content string; target: path",
+    "usage": [
+        "{\"tool\":\"write\",\"target\":\"./filename\",\"args\":\"new content\"}",
+        "{\"tool\":\"write\",\"target\":\"./filename\",\"args\":{\"content\":\"new content\"}}",
+    ],
 }
 
 
@@ -57,7 +60,10 @@ def run(
         skill_error = validate_skill_write_target(target_path, skill_roots)
         if skill_error:
             return _error(skill_error)
-        content = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
+        if isinstance(args, dict):
+            content = str(args.get("content") or args.get("text") or "")
+        else:
+            content = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
         with target_path.open("w", encoding="utf-8") as fh:
             fh.write(content or "")
         data = {

@@ -22,10 +22,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "target file path; args is JSON {'range':'lines:10-20','content':'...'} or 'lines:10-20\\n...'",
+    "input_schema": "v2 args: {range:'lines:10-20',content:'...'} (or {start:int,end:int,content:'...'}); v1 args: JSON string or 'lines:..\\n...'",
     "usage": [
-        "{'tool':'patch','target':'file.py','args':'{\"range\":\"lines:10-12\",\"content\":\"new text\"}'}",
-        "{'tool':'patch','target':'file.py','args':'lines:10-12\\nnew text'}",
+        "{\"tool\":\"patch\",\"target\":\"file.py\",\"args\":\"{\\\"range\\\":\\\"lines:10-12\\\",\\\"content\\\":\\\"new text\\\"}\"}",
+        "{\"tool\":\"patch\",\"target\":\"file.py\",\"args\":{\"range\":\"lines:10-12\",\"content\":\"new text\"}}",
+        "{\"tool\":\"patch\",\"target\":\"file.py\",\"args\":\"lines:10-12\\nnew text\"}",
     ],
 }
 

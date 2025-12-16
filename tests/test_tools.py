@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -68,6 +69,20 @@ class ToolSafetyTests(TestCase):
     def test_safe_target_path_blocks_escape_even_with_leading_slash(self) -> None:
         with self.assertRaises(ValueError):
             safe_target_path("/../outside", self.base, extra_roots=[])
+
+    def test_safe_target_path_blocks_symlink_escape(self) -> None:
+        outside_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(outside_tmp.cleanup)
+        outside = Path(outside_tmp.name).resolve()
+
+        escape = self.base / "escape"
+        try:
+            os.symlink(str(outside), str(escape))
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest(f"symlink not supported: {exc}")
+
+        with self.assertRaises(ValueError):
+            safe_target_path("escape/secret.txt", self.base, extra_roots=[])
 
     def test_run_tool_read_with_line_range(self) -> None:
         target = self.base / "notes.txt"

@@ -111,7 +111,20 @@ def run_agent_turn(
     runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
     runtime_context: Optional[RuntimeContext] = None,
 ) -> Tuple[int, Optional[LLMCallStats], bool]:
-    """Run one model turn, executing tools until the model stops requesting them."""
+    """
+    Run the agent for a single user-visible turn.
+
+    This function repeatedly calls the model and executes any requested tool calls until the model
+    produces a terminal step (typically `end`) or it becomes clear we cannot safely proceed.
+
+    Key invariants:
+    - Governance gating: when tasks are incomplete, user-visible `progress`/`final` messages are
+      withheld. The JSON protocol turn is still appended to `messages` so the model has continuity.
+    - Withheld-message rule: if a user-visible message was withheld, the model must re-send that
+      message after tasks are complete; ending without re-sending is blocked.
+
+    Returns `(next_turn, last_stats, ended)` where `ended` indicates the conversation may stop.
+    """
     empty_replies = 0
     last_tool_summary: Optional[str] = None
     last_stats: Optional[LLMCallStats] = None

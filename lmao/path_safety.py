@@ -8,7 +8,7 @@ from typing import Optional, Sequence, Tuple
 def normalize_path_for_output(path: Path, base: Path) -> str:
     try:
         rel = path.relative_to(base)
-    except Exception:
+    except ValueError:
         rel = path
     rel_str = str(rel)
     if path.is_dir() and not rel_str.endswith("/"):
@@ -28,14 +28,14 @@ def safe_target_path(target: str, base: Path, extra_roots: Sequence[Path]) -> Pa
     elif target_str.startswith(("/", "\\")):
         try:
             abs_candidate = Path(target_str).expanduser().resolve()
-        except Exception:
+        except (OSError, RuntimeError):
             abs_candidate = None
         if abs_candidate is not None:
             for root in allowed_roots:
                 try:
                     abs_candidate.relative_to(root)
                     return abs_candidate
-                except Exception:
+                except ValueError:
                     continue
         raw_path = Path(target_str.lstrip("/\\"))
         target_path = (base / raw_path).resolve()
@@ -47,7 +47,7 @@ def safe_target_path(target: str, base: Path, extra_roots: Sequence[Path]) -> Pa
         try:
             target_path.relative_to(root)
             return target_path
-        except Exception:
+        except ValueError:
             continue
     raise ValueError("path escapes allowed roots")
 

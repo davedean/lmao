@@ -171,7 +171,7 @@ def load_plugins(
         if debug_logger:
             debug_logger.log("plugin.missing_fields", f"path={resolved} missing=run")
         return []
-    # Type: handler is validated to be callable and return str
+    # After runtime validation, we treat the plugin entrypoint as returning a string tool payload.
     handler = cast(Callable[..., str], handler)
 
     multi_manifests = getattr(module, "PLUGINS", None)
@@ -201,6 +201,7 @@ def load_plugins(
                     )
                 return []
             tool_name = str(manifest.get("name", "")).strip()
+            base_handler = handler
 
             def _wrapped(
                 target: str,
@@ -208,14 +209,13 @@ def load_plugins(
                 base: Path,
                 extra_roots,
                 skill_roots,
-                _handler: Callable[..., str],
                 task_manager=None,
                 debug_logger: Optional[DebugLogger] = None,
                 meta: Optional[Dict[str, Any]] = None,
                 _tool_name: str = tool_name,
             ) -> str:
                 try:
-                    sig = inspect.signature(_handler)
+                    sig = inspect.signature(base_handler)
                     params = list(sig.parameters.values())
                     accepts_varargs = any(
                         p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
@@ -224,7 +224,7 @@ def load_plugins(
                 except Exception:
                     accepts_meta = False
                 if accepts_meta:
-                    return _handler(
+                    return base_handler(
                         _tool_name,
                         target,
                         args,
@@ -235,7 +235,7 @@ def load_plugins(
                         debug_logger,
                         meta,
                     )
-                return _handler(
+                return base_handler(
                     _tool_name,
                     target,
                     args,

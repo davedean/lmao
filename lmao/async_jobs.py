@@ -87,7 +87,7 @@ class AsyncJobManager:
 
         try:
             stat_size = path.stat().st_size
-        except Exception:
+        except OSError:
             stat_size = 0
         job.tail_offset = 0 if start_at == "start" else int(stat_size)
 
@@ -112,7 +112,7 @@ class AsyncJobManager:
                 universal_newlines=True,
             )
             job.proc = proc
-        except Exception as exc:
+        except (OSError, ValueError) as exc:
             job.status = "error"
             job.error = f"async_bash exception: {exc}"
             with self._lock:
@@ -128,7 +128,7 @@ class AsyncJobManager:
                     return
                 for line in pipe:
                     self._append_event(job_id, stream_name, line.rstrip("\n"))
-            except Exception as exc:
+            except OSError as exc:
                 self._set_error(job_id, f"{stream_name} reader error: {exc}")
 
         threading.Thread(target=reader, args=("stdout", proc.stdout), daemon=True).start()
@@ -148,7 +148,7 @@ class AsyncJobManager:
         if job.kind == "bash" and job.proc is not None:
             try:
                 job.proc.terminate()
-            except Exception:
+            except OSError:
                 pass
         return True
 
@@ -219,7 +219,7 @@ class AsyncJobManager:
         proc = job.proc
         try:
             code = proc.wait()
-        except Exception as exc:
+        except (OSError, subprocess.SubprocessError) as exc:
             self._set_error(job_id, f"process wait error: {exc}")
             return
         with self._lock:
@@ -247,7 +247,7 @@ class AsyncJobManager:
                 f.seek(job.tail_offset)
                 data = f.read()
                 job.tail_offset = f.tell()
-        except Exception as exc:
+        except (OSError, LookupError, UnicodeError, ValueError) as exc:
             self._set_error(job.id, f"tail read error: {exc}")
             return
         if not data:

@@ -102,7 +102,7 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Output: `--no-stats` (hide token/latency/bytes stats in the prompt/output)
 - Prompting: `--prompt-file` (seed long prompts), optional interactive prompt when the positional prompt is omitted
 - Headless runtime: `--headless` keeps the loop from prompting; pair it with an explicit prompt (or `default_prompt` in `lmao.conf`) so the agent can finish without clarification requests.
-- Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory
+- Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory (override the destination with `[debug]` `log_path`, relative paths are resolved under the working directory)
 - Config: `--config PATH`, `--no-config`, `--print-config` (print the resolved defaults without secrets), `--config-init` (write the default config if missing)
 - Matterbridge: `--matterbridge-uri` and `--matterbridge-gateway` override `[matterbridge]`/`MATTERBRIDGE_*` defaults for the send/read tools.
 

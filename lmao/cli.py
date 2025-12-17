@@ -39,6 +39,15 @@ LMSTUDIO_DEFAULT_MODEL = os.environ.get("LM_STUDIO_MODEL", "qwen")
 OPENROUTER_DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 
 
+def _resolve_debug_log_path(base_dir: Path, config_log_path: Optional[str]) -> Path:
+    if not config_log_path:
+        return base_dir / "debug.log"
+    resolved = Path(config_log_path).expanduser()
+    if resolved.is_absolute():
+        return resolved
+    return base_dir / resolved
+
+
 def read_prompt(args: argparse.Namespace) -> Optional[str]:
     if args.prompt_file:
         return Path(args.prompt_file).read_text(encoding="utf-8")
@@ -316,7 +325,11 @@ def main() -> None:
     )
     configure_matterbridge(matterbridge_uri, matterbridge_gateway)
 
-    debug_logger = DebugLogger(base_dir / "debug.log") if args.debug else None
+    debug_logger = (
+        DebugLogger(_resolve_debug_log_path(base_dir, config.debug_log_path))
+        if args.debug
+        else None
+    )
     if debug_logger and config_result.error:
         debug_logger.log("config.load_error", config_result.error)
 

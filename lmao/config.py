@@ -39,6 +39,7 @@ class UserConfig:
     workdir: Optional[str] = None
     matterbridge_uri: Optional[str] = None
     matterbridge_gateway: Optional[str] = None
+    debug_log_path: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,9 @@ max_tool_chars = 400
 # CLI flag > config > env
 uri =
 gateway =
+
+[debug]
+log_path =
 """
 
 
@@ -265,6 +269,7 @@ def load_user_config(path: Path) -> ConfigLoadResult:
             ),
             matterbridge_uri=_read_string(parser, "matterbridge", "uri"),
             matterbridge_gateway=_read_string(parser, "matterbridge", "gateway"),
+            debug_log_path=_read_string(parser, "debug", "log_path"),
         )
     except ValueError as exc:
         return ConfigLoadResult(

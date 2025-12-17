@@ -49,6 +49,9 @@ app_title = Example Title
 api_key_env = CUSTOM_API_KEY
 free_default_model = openai/gpt-4o-mini
 free_blacklist = gpt-free-1, gpt-free-2
+
+[debug]
+log_path = /tmp/lmao-debug.log
 """
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "lmao.conf"
@@ -56,20 +59,21 @@ free_blacklist = gpt-free-1, gpt-free-2
             result = load_user_config(path)
             self.assertTrue(result.loaded)
             cfg = result.config
-            self.assertEqual("openrouter", cfg.provider)
-            self.assertEqual("yolo", cfg.mode)
-            self.assertTrue(cfg.multiline)
-            self.assertFalse(cfg.silent_tools)
-            self.assertTrue(cfg.no_stats)
-            self.assertEqual(5, cfg.max_turns)
-            self.assertEqual("~/code", cfg.workdir)
-            self.assertAlmostEqual(0.7, cfg.temperature)
-            self.assertAlmostEqual(0.9, cfg.top_p)
-            self.assertEqual(200, cfg.max_tokens)
-            self.assertEqual(5, cfg.max_tool_lines)
-            self.assertEqual(250, cfg.max_tool_chars)
-            self.assertEqual("http://lm.example", cfg.lmstudio_endpoint)
-            self.assertEqual("qwen3-4b-test", cfg.lmstudio_model)
+        self.assertEqual("openrouter", cfg.provider)
+        self.assertEqual("yolo", cfg.mode)
+        self.assertTrue(cfg.multiline)
+        self.assertFalse(cfg.silent_tools)
+        self.assertTrue(cfg.no_stats)
+        self.assertEqual(5, cfg.max_turns)
+        self.assertEqual("~/code", cfg.workdir)
+        self.assertAlmostEqual(0.7, cfg.temperature)
+        self.assertAlmostEqual(0.9, cfg.top_p)
+        self.assertEqual(200, cfg.max_tokens)
+        self.assertEqual(5, cfg.max_tool_lines)
+        self.assertEqual(250, cfg.max_tool_chars)
+        self.assertEqual("http://lm.example", cfg.lmstudio_endpoint)
+        self.assertEqual("qwen3-4b-test", cfg.lmstudio_model)
+        self.assertEqual("/tmp/lmao-debug.log", cfg.debug_log_path)
         self.assertEqual("https://or.example/api", cfg.openrouter_endpoint)
         self.assertEqual("openrouter/model", cfg.openrouter_model)
         self.assertEqual("https://referer.example", cfg.openrouter_http_referer)

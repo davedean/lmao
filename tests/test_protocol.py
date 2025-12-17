@@ -188,3 +188,27 @@ class ProtocolParsingTests(TestCase):
         )
         with self.assertRaises(ProtocolError):
             parse_assistant_turn(raw, allowed_tools=["read"])
+
+    def test_allows_direct_tool_step_alias_in_v2(self) -> None:
+        raw = json.dumps(
+            {
+                "type": "assistant_turn",
+                "version": "2",
+                "steps": [{"type": "write", "target": "a.txt", "args": {"content": "hello"}}],
+            }
+        )
+        turn = parse_assistant_turn(raw, allowed_tools=["write"])
+        self.assertEqual("assistant_turn", turn.type)
+        self.assertEqual(1, len(turn.steps))
+        step = turn.steps[0]
+        self.assertEqual("tool_call", step.type)
+        self.assertEqual("write", getattr(step, "call").tool)
+
+    def test_wraps_single_direct_tool_step_dict(self) -> None:
+        raw = json.dumps({"type": "read", "target": "a.txt", "args": "lines:1-2"})
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("assistant_turn", turn.type)
+        self.assertEqual(1, len(turn.steps))
+        step = turn.steps[0]
+        self.assertEqual("tool_call", step.type)
+        self.assertEqual("read", getattr(step, "call").tool)

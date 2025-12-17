@@ -159,7 +159,7 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
         obj = first_loaded if first_loaded is not None else _load_jsonish_dict(raw_text)
     if obj.get("type") != "assistant_turn":
         # Back-compat / model convenience: accept a single step dict and wrap it.
-        if obj.get("type") in {"think", "tool_call", "message", "end"}:
+        if obj.get("type") in {"think", "tool_call", "message", "end"} or obj.get("type") in set(allowed_tools):
             obj = _wrap_single_step(obj)
         else:
             raise ProtocolError("assistant_turn.type must be 'assistant_turn'")
@@ -240,6 +240,23 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
             if step_type not in set(allowed_tools):
                 raise ProtocolError(f"steps[{idx}].type '{step_type}' is not allowed")
             steps.append(_parse_task_tool_alias_step(step_obj, allowed_tools=allowed_tools, idx=idx))
+            continue
+
+        # Back-compat / model convenience: allow direct tool steps (type == tool name) for any allowed tool.
+        # Example: {"type":"write","target":"a.txt","args":"content"}.
+        if step_type in set(allowed_tools):
+            tool = step_type
+            target = str(step_obj.get("target", "") or "")
+            meta_val = step_obj.get("meta", None)
+            meta: Optional[Dict[str, Any]] = None
+            if meta_val is not None:
+                meta = _require_dict(meta_val, f"steps[{idx}].meta")
+            payload = step_obj.get("args", None)
+            if version == "1":
+                args: Any = _coerce_args_v1(payload)
+            else:
+                args = payload
+            steps.append(ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args, meta=meta)))
             continue
 
         raise ProtocolError(f"unsupported step type '{step_type}' at steps[{idx}]")

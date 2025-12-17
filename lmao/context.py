@@ -1,10 +1,30 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 from .plugins import PluginTool
 from .runtime_tools import RuntimeTool
+
+def _wrap_tool_call_usage_example(example: str) -> str:
+    """Return a tool_call step example from a bare tool payload example.
+
+    Most plugins provide usage examples shaped like {"tool":"...","target":"...","args":...}.
+    In the protocol, tool invocations must be wrapped in a tool_call step.
+    """
+    stripped = (example or "").strip()
+    if not stripped:
+        return example
+    try:
+        payload = json.loads(stripped)
+    except Exception:
+        return example
+    if not isinstance(payload, dict) or "tool" not in payload:
+        return example
+    wrapped = {"type": "tool_call", "call": payload}
+    return json.dumps(wrapped, ensure_ascii=False)
+
 
 def _format_tool_catalog(
     allowed_tools: Sequence[str],
@@ -26,7 +46,7 @@ def _format_tool_catalog(
         if tool is not None:
             lines.append(f"- {tool.name}: {tool.description}")
             for ex in (tool.usage_examples or [])[:3]:
-                lines.append(f"  usage: {ex}")
+                lines.append(f"  usage: {_wrap_tool_call_usage_example(ex)}")
             continue
         rt_tool = rt_by_name.get(name)
         if rt_tool is not None:
@@ -54,6 +74,7 @@ def build_tool_prompt(
         "Protocol v1 is still accepted, but prefer v2 (structured args/meta).",
         "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
         "Steps: think | tool_call | message | end. Tool outputs are JSON with success + data/error.",
+        "Important: only task tools (add_task/complete_task/delete_task/list_tasks) may appear directly as steps; ALL other tools must be called via a tool_call step.",
         "Ending rule: the session ends ONLY when you include an explicit end step; a message step (even purpose='final') does NOT end the loop.",
         "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
         "Task list: you can use add_task/list_tasks/complete_task to track work; for any multi-step plan, you must use the task list to outline and track progress.",
@@ -63,6 +84,7 @@ def build_tool_prompt(
         "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
         "Tool calls (v1): {\"type\":\"tool_call\",\"call\":{\"tool\":\"read\",\"target\":\"README.md\",\"args\":\"lines:1-40\"}}",
         "Tool calls (v2): {\"type\":\"tool_call\",\"call\":{\"tool\":\"async_bash\",\"target\":\"\",\"args\":{\"command\":\"sleep 20\"},\"meta\":{\"track_task\":true}}}",
+        "Note: tool 'usage' examples below are already wrapped as tool_call steps; copy them verbatim.",
         "Example (valid JSON): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"tool_call\",\"call\":{\"tool\":\"ls\",\"target\":\"\",\"args\":\"\"}}]}",
         "Example (finish): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"message\",\"purpose\":\"final\",\"format\":\"markdown\",\"content\":\"...\"},{\"type\":\"end\",\"reason\":\"completed\"}]}",
         "Available tools (including plugins):",

@@ -563,6 +563,8 @@ def run_loop(
         if debug_logger:
             debug_logger.log("user.input", f"turn={turn} content={user_input}")
 
+    root_request: Optional[str] = None
+
     while True:
         if max_turns is not None and turn > max_turns:
             print(f"Reached max turns ({max_turns}); stopping.")
@@ -583,6 +585,9 @@ def run_loop(
         if not user_input.strip():
             user_input = ""
             continue
+
+        if root_request is None:
+            root_request = user_input
 
         messages.append({"role": "user", "content": user_input})
         if debug_logger:
@@ -607,8 +612,20 @@ def run_loop(
             debug_logger=debug_logger,
         )
         turn = next_turn
-        if ended or headless:
+        if ended:
             return
+        if headless:
+            # Headless mode has no interactive user to provide follow-ups. If the model did not end,
+            # prompt it to continue autonomously (tools or final+end) toward the original request.
+            request = root_request or ""
+            user_input = (
+                f"{LOOP_PREFIX} Headless mode: continue autonomously without waiting for user input.\n"
+                f"Original request: {request!r}\n"
+                "If you can proceed, take the next action now (call tools as needed).\n"
+                "If you are finished, send a final summary message and then emit an end step.\n"
+                "If you are blocked and cannot proceed safely, send purpose='cannot_finish' and then end."
+            )
+            continue
         user_prompt = format_user_prompt()
 
         try:

@@ -83,6 +83,7 @@ def _upsert_governance_notice(
         "- Do not send message steps with purpose 'progress' or 'final' until all tasks are complete.\n"
         "- If you need user input, send a message step with purpose 'clarification'.\n"
         "- If you cannot finish, send a message step with purpose 'cannot_finish' (and you may end).\n"
+        "- The loop stops ONLY when you include an explicit end step; a message step alone never ends the session.\n"
         "- Otherwise, use tool_call steps to add/complete/delete tasks until the list is complete."
         f"{strict_next}"
     )
@@ -623,8 +624,14 @@ def run_loop(
                 f"{LOOP_PREFIX} Headless mode: continue autonomously without waiting for user input.\n"
                 f"Original request: {request!r}\n"
                 "If you can proceed, take the next action now (call tools as needed).\n"
-                "If you are finished, send a final summary message and then emit an end step.\n"
-                "If you are blocked and cannot proceed safely, send purpose='cannot_finish' and then end."
+                "If you are finished, send a final summary message AND include an explicit end step.\n"
+                "Important: a message step with purpose='final' does NOT stop the run; only an end step stops it.\n"
+                "If you are blocked and cannot proceed safely, send purpose='cannot_finish' and then end.\n"
+                "Example finish JSON: "
+                "{\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":["
+                "{\"type\":\"message\",\"purpose\":\"final\",\"format\":\"markdown\",\"content\":\"...\"},"
+                "{\"type\":\"end\",\"reason\":\"completed\"}"
+                "]}"
             )
             continue
         user_prompt = format_user_prompt()

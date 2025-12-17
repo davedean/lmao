@@ -41,6 +41,7 @@ def _format_tool_catalog(
 def build_tool_prompt(
     allowed_tools: Sequence[str],
     read_only: bool,
+    yolo_enabled: bool = False,
     plugins: Optional[Sequence[PluginTool]] = None,
     runtime_tools: Optional[Sequence[RuntimeTool]] = None,
     headless: bool = False,
@@ -72,8 +73,10 @@ def build_tool_prompt(
         prompt = (
             f"{prompt}\nRead-only mode is enabled: destructive tools (write, mkdir, move) and plugins that disallow read-only are unavailable; requests for them will be rejected."
         )
-    if "bash" in resolved:
+    if "bash" in resolved and not yolo_enabled:
         prompt = f"{prompt}\nNote: 'bash' prompts for confirmation on every command. Use only when necessary."
+    if yolo_enabled:
+        prompt = f"{prompt}\nYolo mode is enabled: tool runs are auto-approved (no per-call confirmations)."
     if headless:
         prompt = (
             f"{prompt}\nHeadless mode is active: the user cannot respond during the run. "
@@ -178,6 +181,7 @@ def build_system_message(
     notes: NotesContext,
     initial_task_list: Optional[str] = None,
     read_only: bool = False,
+    yolo_enabled: bool = False,
     allowed_tools: Sequence[str] = (),
     plugins: Optional[Sequence[PluginTool]] = None,
     runtime_tools: Optional[Sequence[RuntimeTool]] = None,
@@ -186,6 +190,7 @@ def build_system_message(
     tool_prompt = build_tool_prompt(
         list(allowed_tools),
         read_only,
+        yolo_enabled=yolo_enabled,
         plugins=plugins,
         runtime_tools=runtime_tools,
         headless=headless,

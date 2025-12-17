@@ -46,6 +46,7 @@ def _subagent_system_prompt(
     base_prompt = build_tool_prompt(
         list(allowed_tools),
         read_only=True,
+        yolo_enabled=False,
         plugins=list(plugin_tools.values()),
         runtime_tools=None,
     )

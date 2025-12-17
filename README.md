@@ -90,7 +90,7 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Shipped plugins under `lmao/tools` are loaded automatically. Each plugin file should be named `tool.py`.
 - Convention: keep plugins under `lmao/tools/<plugin-name>/tool.py` to avoid mixing with skills.
 - Manifest shape: `PLUGIN = {"name": "my_tool", "description": "...", "api_version": PLUGIN_API_VERSION, "is_destructive": bool, "allow_in_read_only": bool, "allow_in_normal": bool, "allow_in_yolo": bool, "always_confirm": bool, "input_schema": "<freeform>"}` plus a callable `run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None) -> str` that returns the usual JSON payload.
-- Gating: plugin allow-listing follows the allow flags above. Read-only mode blocks plugins unless `allow_in_read_only` is true. Yolo mode includes plugins allowed in normal plus any that require yolo (`allow_in_normal=False, allow_in_yolo=True`). Set `always_confirm: true` to prompt the user on every call (used by bash). They must not escape the working directory; use `safe_target_path` if you manipulate paths.
+- Gating: Read-only mode blocks plugins unless `allow_in_read_only` is true. Normal mode includes plugins with `allow_in_normal`. Yolo mode allows all discovered plugins (read-only restrictions still apply). Set `always_confirm: true` to prompt the user on every call in non-yolo modes (used by bash). They must not escape the working directory; use `safe_target_path` if you manipulate paths.
 - Examples: `lmao/tools/demo-plugin/tool.py` echoes the incoming target/args; task tools, git add/commit, and bash also live under `lmao/tools/*`.
 
 ## CLI Flags (excerpt)

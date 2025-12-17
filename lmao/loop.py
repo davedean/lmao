@@ -529,6 +529,7 @@ def run_loop(
             notes,
             initial_task_list=initial_task_list_text,
             read_only=read_only,
+            yolo_enabled=yolo_enabled,
             allowed_tools=allowed_tools,
             plugins=list(plugins.values()),
             runtime_tools=list(runtime_tools.values()),

@@ -159,7 +159,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run without interactive prompts (headless runtime mode)",
     )
-    parser.add_argument("--yolo", action="store_true", help="Legacy: enable risky bash tool (use --mode yolo instead)")
+    parser.add_argument("--yolo", action="store_true", help="Legacy: enable yolo mode (use --mode yolo instead)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log")
     parser.add_argument("--read-only", action="store_true", help="Legacy: disable destructive plugins (use --mode readonly instead)")
     return parser

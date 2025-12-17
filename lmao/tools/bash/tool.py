@@ -10,7 +10,7 @@ from lmao.plugin_helpers import safe_target_path
 
 PLUGIN = {
     "name": "bash",
-    "description": "Run a shell command with user confirmation.",
+    "description": "Run a shell command (per-call confirmation outside yolo mode).",
     "api_version": PLUGIN_API_VERSION,
     "is_destructive": True,
     "allow_in_read_only": False,

@@ -44,7 +44,7 @@ def runtime_tool_allowed(tool: RuntimeTool, *, read_only: bool, yolo_enabled: bo
     if read_only:
         return tool.allow_in_read_only
     if yolo_enabled:
-        return tool.allow_in_yolo or tool.allow_in_normal
+        return True
     return tool.allow_in_normal
 
 

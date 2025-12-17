@@ -232,6 +232,26 @@ class PluginLoaderTests(TestCase):
         payload_ok = json.loads(result_ok)
         self.assertTrue(payload_ok["success"])
 
+    def test_always_confirm_plugins_auto_approve_in_yolo(self) -> None:
+        plugin_dir = self._write_plugin(name="confirmme_yolo", always_confirm=True)
+        plugins = discover_plugins([plugin_dir], self.base)
+
+        allowed = get_allowed_tools(read_only=False, yolo_enabled=True, plugins=plugins.values())
+        self.assertIn("confirmme_yolo", allowed)
+
+        call = ToolCall(tool="confirmme_yolo", target="", args="")
+        with patch("builtins.input", side_effect=AssertionError("input() should not be called in yolo mode")):
+            result = run_tool(
+                call,
+                base=self.base,
+                extra_roots=[],
+                skill_roots=[],
+                yolo_enabled=True,
+                plugin_tools=plugins,
+            )
+        payload = json.loads(result)
+        self.assertTrue(payload["success"])
+
     def test_loads_multi_tool_plugin(self) -> None:
         plugin_dir = self._write_multi_plugin(name_a="multi_a", name_b="multi_b")
         plugins = discover_plugins([plugin_dir], self.base)
@@ -372,6 +392,24 @@ class BuiltinPluginTests(TestCase):
         payload = json.loads(result)
         self.assertFalse(payload["success"])
         self.assertIn("not approved", payload["error"])
+
+    def test_bash_plugin_runs_without_confirm_in_yolo(self) -> None:
+        allowed = get_allowed_tools(read_only=False, yolo_enabled=True, plugins=self.plugins.values())
+        self.assertIn("bash", allowed)
+
+        call = ToolCall(tool="bash", target="", args="echo ok")
+        with patch("builtins.input", side_effect=AssertionError("input() should not be called in yolo mode")):
+            result = run_tool(
+                call,
+                base=self.base,
+                extra_roots=[],
+                skill_roots=[],
+                yolo_enabled=True,
+                plugin_tools=self.plugins,
+            )
+        payload = json.loads(result)
+        self.assertTrue(payload["success"])
+        self.assertEqual("ok", payload["data"]["stdout"])
 
     def test_builtin_plugins_include_usage_examples(self) -> None:
         missing = [name for name, plugin in self.plugins.items() if not plugin.usage_examples]

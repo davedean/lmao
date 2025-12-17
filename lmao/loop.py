@@ -80,7 +80,7 @@ def _upsert_governance_notice(
         f"{GOVERNANCE_NOTICE_PREFIX}\n"
         f"Current task list:\n{rendered}\n\n"
         "Rules:\n"
-        "- Do not send message steps with purpose 'progress' or 'final' until all tasks are complete.\n"
+        "- If you are using the task list (recommended for multi-step work), complete the tasks before sending message steps with purpose 'progress' or 'final'.\n"
         "- If you need user input, send a message step with purpose 'clarification'.\n"
         "- If you cannot finish, send a message step with purpose 'cannot_finish' (and you may end).\n"
         "- The loop stops ONLY when you include an explicit end step; a message step alone never ends the session.\n"

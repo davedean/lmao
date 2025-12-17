@@ -28,6 +28,23 @@ PLUGIN = {
 }
 
 
+ESCAPE_HINTS = ("\\n", "\\r", "\\t", "\\\"", "\\'", "\\b", "\\f", "\\u")
+
+
+def _should_decode_escaped_text(text: str) -> bool:
+    if "\n" in text:
+        return False
+    return any(hint in text for hint in ESCAPE_HINTS)
+
+
+def _decode_escaped_text(text: str) -> str:
+    try:
+        decoded = text.encode("utf-8").decode("unicode_escape")
+    except Exception:
+        return text
+    return decoded
+
+
 def _success(data: dict) -> str:
     return json.dumps({"tool": PLUGIN["name"], "success": True, "data": data}, ensure_ascii=False)
 
@@ -64,6 +81,8 @@ def run(
             content = str(args.get("content") or args.get("text") or "")
         else:
             content = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False)
+        if isinstance(content, str) and _should_decode_escaped_text(content):
+            content = _decode_escaped_text(content)
         with target_path.open("w", encoding="utf-8") as fh:
             fh.write(content or "")
         data = {

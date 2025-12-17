@@ -32,10 +32,13 @@ class UserConfig:
     openrouter_model: Optional[str] = None
     openrouter_http_referer: Optional[str] = None
     openrouter_app_title: Optional[str] = None
+    openrouter_api_key: Optional[str] = None
     openrouter_api_key_env: Optional[str] = None
     openrouter_free_default_model: Optional[str] = None
     openrouter_free_blacklist: tuple[str, ...] = ()
     workdir: Optional[str] = None
+    matterbridge_uri: Optional[str] = None
+    matterbridge_gateway: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -72,7 +75,8 @@ endpoint = https://openrouter.ai/api/v1/chat/completions
 model =
 http_referer =
 app_title =
-; Prefer env var for secrets:
+; API key can be set directly or via env var (api_key takes precedence)
+api_key =
 api_key_env = OPENROUTER_API_KEY
 free_default_model =
 free_blacklist =
@@ -85,6 +89,11 @@ max_tokens =
 [tool_output]
 max_tool_lines = 8
 max_tool_chars = 400
+
+[matterbridge]
+# CLI flag > config > env
+uri =
+gateway =
 """
 
 
@@ -158,7 +167,9 @@ def resolve_provider_settings(
         None,
     )
     if model is None:
-        raise ValueError("Missing --model for provider openrouter (e.g. openai/gpt-4o-mini).")
+        raise ValueError(
+            "Missing --model for provider openrouter (e.g. openai/gpt-4o-mini)."
+        )
     return ProviderSettings(endpoint=endpoint, model=model)
 
 
@@ -171,11 +182,19 @@ def resolve_openrouter_headers(
 ) -> tuple[Optional[str], Optional[str]]:
     environment = env or os.environ
     referer = pick_first_non_none(
-        (cli_referer, environment.get("OPENROUTER_HTTP_REFERER"), config.openrouter_http_referer),
+        (
+            cli_referer,
+            environment.get("OPENROUTER_HTTP_REFERER"),
+            config.openrouter_http_referer,
+        ),
         None,
     )
     title = pick_first_non_none(
-        (cli_title, environment.get("OPENROUTER_APP_TITLE"), config.openrouter_app_title),
+        (
+            cli_title,
+            environment.get("OPENROUTER_APP_TITLE"),
+            config.openrouter_app_title,
+        ),
         None,
     )
     return referer, title
@@ -190,6 +209,8 @@ def resolve_openrouter_api_key(
 ) -> Optional[str]:
     if cli_value:
         return cli_value
+    if config.openrouter_api_key:
+        return config.openrouter_api_key
     environment = env or os.environ
     env_var = config.openrouter_api_key_env or default_env_var
     return environment.get(env_var)
@@ -201,7 +222,9 @@ def load_user_config(path: Path) -> ConfigLoadResult:
         with path.open("r", encoding="utf-8") as handle:
             parser.read_file(handle)
     except FileNotFoundError:
-        return ConfigLoadResult(path=path, config=UserConfig(), error=None, loaded=False)
+        return ConfigLoadResult(
+            path=path, config=UserConfig(), error=None, loaded=False
+        )
     except Exception as exc:  # pragma: no cover - unexpected I/O error
         return ConfigLoadResult(
             path=path,
@@ -232,11 +255,16 @@ def load_user_config(path: Path) -> ConfigLoadResult:
             openrouter_model=_read_string(parser, "openrouter", "model"),
             openrouter_http_referer=_read_string(parser, "openrouter", "http_referer"),
             openrouter_app_title=_read_string(parser, "openrouter", "app_title"),
+            openrouter_api_key=_read_string(parser, "openrouter", "api_key"),
             openrouter_api_key_env=_read_string(parser, "openrouter", "api_key_env"),
             openrouter_free_default_model=_read_string(
                 parser, "openrouter", "free_default_model"
             ),
-            openrouter_free_blacklist=_read_list(parser, "openrouter", "free_blacklist"),
+            openrouter_free_blacklist=_read_list(
+                parser, "openrouter", "free_blacklist"
+            ),
+            matterbridge_uri=_read_string(parser, "matterbridge", "uri"),
+            matterbridge_gateway=_read_string(parser, "matterbridge", "gateway"),
         )
     except ValueError as exc:
         return ConfigLoadResult(
@@ -256,7 +284,9 @@ def write_default_config(path: Path) -> bool:
     return True
 
 
-def _read_string(parser: configparser.ConfigParser, section: str, option: str) -> Optional[str]:
+def _read_string(
+    parser: configparser.ConfigParser, section: str, option: str
+) -> Optional[str]:
     if not parser.has_section(section) or not parser.has_option(section, option):
         return None
     raw = parser.get(section, option)
@@ -266,7 +296,9 @@ def _read_string(parser: configparser.ConfigParser, section: str, option: str) -
     return value if value else None
 
 
-def _read_list(parser: configparser.ConfigParser, section: str, option: str) -> tuple[str, ...]:
+def _read_list(
+    parser: configparser.ConfigParser, section: str, option: str
+) -> tuple[str, ...]:
     raw = _read_string(parser, section, option)
     if raw is None:
         return ()
@@ -278,7 +310,9 @@ def _read_list(parser: configparser.ConfigParser, section: str, option: str) -> 
     return tuple(entries)
 
 
-def _read_bool(parser: configparser.ConfigParser, section: str, option: str) -> Optional[bool]:
+def _read_bool(
+    parser: configparser.ConfigParser, section: str, option: str
+) -> Optional[bool]:
     value = _read_string(parser, section, option)
     if value is None:
         return None
@@ -290,7 +324,9 @@ def _read_bool(parser: configparser.ConfigParser, section: str, option: str) -> 
     raise ValueError(f"Invalid boolean for [{section}] {option}: {value}")
 
 
-def _read_int(parser: configparser.ConfigParser, section: str, option: str) -> Optional[int]:
+def _read_int(
+    parser: configparser.ConfigParser, section: str, option: str
+) -> Optional[int]:
     value = _read_string(parser, section, option)
     if value is None:
         return None
@@ -300,7 +336,9 @@ def _read_int(parser: configparser.ConfigParser, section: str, option: str) -> O
         raise ValueError(f"Invalid integer for [{section}] {option}: {value}") from exc
 
 
-def _read_float(parser: configparser.ConfigParser, section: str, option: str) -> Optional[float]:
+def _read_float(
+    parser: configparser.ConfigParser, section: str, option: str
+) -> Optional[float]:
     value = _read_string(parser, section, option)
     if value is None:
         return None

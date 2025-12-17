@@ -30,6 +30,7 @@ from .openrouter_free_models import (
     derive_models_endpoint,
     resolve_model_cache_path,
 )
+from .matterbridge import configure_matterbridge
 
 LMSTUDIO_DEFAULT_ENDPOINT = os.environ.get(
     "LM_STUDIO_URL", "http://localhost:1234/v1/chat/completions"
@@ -113,6 +114,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Working directory for tools (default: current directory; config can override)",
     )
     parser.add_argument(
+        "--matterbridge-uri",
+        default=None,
+        help=(
+            "Matterbridge base URL (overrides [matterbridge] uri in config; fallback: MATTERBRIDGE_URI)"
+        ),
+    )
+    parser.add_argument(
+        "--matterbridge-gateway",
+        default=None,
+        help=(
+            "Default Matterbridge gateway name (overrides [matterbridge] gateway in config; fallback: MATTERBRIDGE_GATEWAY)"
+        ),
+    )
+    parser.add_argument(
         "--max-tool-lines",
         type=int,
         default=None,
@@ -174,6 +189,8 @@ def _config_summary(
     openrouter_referer: Optional[str],
     openrouter_title: Optional[str],
     api_key_present: bool,
+    matterbridge_uri: Optional[str],
+    matterbridge_gateway: Optional[str],
 ) -> str:
     endpoint, model = provider_settings
     summary = {
@@ -201,6 +218,8 @@ def _config_summary(
         "openrouter_referer": openrouter_referer,
         "openrouter_title": openrouter_title,
         "openrouter_api_key_present": api_key_present,
+        "matterbridge_uri": matterbridge_uri,
+        "matterbridge_gateway": matterbridge_gateway,
     }
     return json.dumps(summary, ensure_ascii=False, indent=2)
 
@@ -287,6 +306,16 @@ def main() -> None:
         else Path.cwd().resolve(strict=False)
     )
 
+    matterbridge_uri = pick_first_non_none(
+        (args.matterbridge_uri, config.matterbridge_uri),
+        None,
+    )
+    matterbridge_gateway = pick_first_non_none(
+        (args.matterbridge_gateway, config.matterbridge_gateway),
+        None,
+    )
+    configure_matterbridge(matterbridge_uri, matterbridge_gateway)
+
     debug_logger = DebugLogger(base_dir / "debug.log") if args.debug else None
     if debug_logger and config_result.error:
         debug_logger.log("config.load_error", config_result.error)
@@ -367,6 +396,8 @@ def main() -> None:
                 openrouter_referer=openrouter_referer,
                 openrouter_title=openrouter_title,
                 api_key_present=bool(api_key),
+                matterbridge_uri=matterbridge_uri,
+                matterbridge_gateway=matterbridge_gateway,
             )
         )
         return

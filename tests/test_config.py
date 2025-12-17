@@ -74,6 +74,7 @@ free_blacklist = gpt-free-1, gpt-free-2
         self.assertEqual("openrouter/model", cfg.openrouter_model)
         self.assertEqual("https://referer.example", cfg.openrouter_http_referer)
         self.assertEqual("Example Title", cfg.openrouter_app_title)
+        self.assertIsNone(cfg.openrouter_api_key)
         self.assertEqual("CUSTOM_API_KEY", cfg.openrouter_api_key_env)
         self.assertEqual("openai/gpt-4o-mini", cfg.openrouter_free_default_model)
         self.assertEqual(("gpt-free-1", "gpt-free-2"), cfg.openrouter_free_blacklist)
@@ -150,6 +151,15 @@ free_blacklist = gpt-free-1, gpt-free-2
             cli_value="overridden", config=config, env=env
         )
         self.assertEqual("overridden", api_key_cli)
+
+        # Test that direct config API key takes precedence over env var
+        config_with_direct_key = UserConfig(openrouter_api_key="config-key")
+        api_key_direct = resolve_openrouter_api_key(
+            cli_value=None,
+            config=config_with_direct_key,
+            env={"OPENROUTER_API_KEY": "env-key"},
+        )
+        self.assertEqual("config-key", api_key_direct)
 
     def test_resolve_default_config_path_prefers_xdg(self) -> None:
         with patch.dict(os.environ, {"XDG_CONFIG_HOME": "/tmp/xdg"}, clear=False):

@@ -95,7 +95,7 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 
 ## CLI Flags (excerpt)
 - Core: `--provider`, `--endpoint`, `--model`, `--temperature`, `--top-p`, `--max-tokens`, `--workdir`
-- OpenRouter free models: `--free` (equivalent to `--model free`) enables automatic selection of a free tier model, obeying `free_default_model`/`free_blacklist` preferences.
+- OpenRouter free models: `--free` (equivalent to `--model free`) enables automatic selection of a free tier model, obeying `free_default_model`/`free_blacklist` preferences and selecting from a high-scoring shortlist with weighted randomness.
 - Safety: `--mode yolo` (opt into risky flows/plugins) or `--mode readonly` (disable writes/moves/git/bash and plugins that opt out of read-only); legacy `--yolo`/`--read-only` remain for compatibility
 - Extensibility: user-specified plugin directories are planned but not yet supported; current runs load the shipped plugins from `lmao/tools/` (inside the installed package).
 - Loop control: `--max-turns`, `--silent-tools`, `--max-tool-lines`, `--max-tool-chars`

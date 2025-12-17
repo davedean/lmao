@@ -139,6 +139,12 @@ class ProtocolParsingTests(TestCase):
         turn = parse_assistant_turn(raw, allowed_tools=["read"])
         self.assertEqual("assistant_turn", turn.type)
 
+    def test_defaults_version_when_missing(self) -> None:
+        raw = '{"type":"assistant_turn","steps":[{"type":"message","content":"hi"}]}'
+        turn = parse_assistant_turn(raw, allowed_tools=["read"])
+        self.assertEqual("assistant_turn", turn.type)
+        self.assertEqual(1, len(turn.steps))
+
     def test_wraps_single_tool_call_step(self) -> None:
         raw = "{'type':'tool_call','call':{'tool':'read','target':'a.txt','args':'lines:1-2'}}"
         turn = parse_assistant_turn(raw, allowed_tools=["read"])

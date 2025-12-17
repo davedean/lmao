@@ -72,7 +72,7 @@ def _upsert_governance_notice(
         if first_incomplete:
             strict_next = (
                 "\nExample next step (valid JSON):\n"
-                '{"type":"assistant_turn","version":"1","steps":[{"type":"tool_call","call":{"tool":"complete_task","target":"","args":"'
+                '{"type":"assistant_turn","version":"2","steps":[{"type":"tool_call","call":{"tool":"complete_task","target":"","args":"'
                 + str(first_incomplete.id)
                 + '"}}]}'
             )
@@ -184,7 +184,7 @@ def run_agent_turn(
                 return current_turn + 1, last_stats, False
             rendered = task_manager.render_tasks()
             next_json = (
-                '{"type":"assistant_turn","version":"1","steps":['
+                '{"type":"assistant_turn","version":"2","steps":['
                 '{"type":"add_task","args":{"task":"list files in the repo (ls .)"}},'
                 '{"type":"add_task","args":{"task":"inspect three different files (read ...)"}},'
                 '{"type":"add_task","args":{"task":"summarize findings and report"}},'
@@ -234,7 +234,7 @@ def run_agent_turn(
                         f"{LOOP_PREFIX} Your reply was not valid for the required JSON assistant protocol.\n"
                         f"Error: {exc}\n"
                         "Return ONLY a single JSON object matching:\n"
-                        '{"type":"assistant_turn","version":"1","steps":[...]}\n'
+                        '{"type":"assistant_turn","version":"2","steps":[...]}\n'
                         "No code fences, no extra text. Retry now."
                     ),
                 }
@@ -304,7 +304,7 @@ def run_agent_turn(
             think_only_turns += 1
             rendered = task_manager.render_tasks()
             next_json = (
-                '{"type":"assistant_turn","version":"1","steps":['
+                '{"type":"assistant_turn","version":"2","steps":['
                 '{"type":"add_task","args":{"task":"list files in the repo (ls .)"}},'
                 '{"type":"add_task","args":{"task":"inspect three different files (read ...)"}},'
                 '{"type":"add_task","args":{"task":"summarize findings and report"}},'
@@ -420,27 +420,36 @@ def run_agent_turn(
             continue
 
         if has_end:
-            if pending_withheld_message is not None or need_user_update:
-                rendered = task_manager.render_tasks()
-                preview = _truncate_preview(pending_withheld_message or "", max_lines=12, max_chars=900)
-                extra = ""
-                if pending_withheld_message:
-                    extra = f"\n\nWithheld message preview (resend or rephrase):\n{preview}"
-                _upsert_action_required(
-                    messages,
-                    (
-                        "You emitted an end step, but the human user has not received a final visible summary of what happened.\n"
-                        "Do NOT end yet. Send a message step now (prefer purpose='final') summarizing results, then end.\n\n"
-                        f"Current task list:\n{rendered}"
-                        f"{extra}"
-                    ),
-                )
-                current_turn += 1
-                continue
             if not can_end_conversation(task_manager, user_messages):
                 gate_violations += 1
                 current_turn += 1
                 continue
+            if pending_withheld_message is not None or need_user_update:
+                if headless_run:
+                    if pending_withheld_message:
+                        print(f"{pending_withheld_message}\n")
+                    else:
+                        summary = last_tool_summary if last_tool_summary is not None else ""
+                        print(f"{summary or '(no additional output)'}\n")
+                    pending_withheld_message = None
+                    need_user_update = False
+                else:
+                    rendered = task_manager.render_tasks()
+                    preview = _truncate_preview(pending_withheld_message or "", max_lines=12, max_chars=900)
+                    extra = ""
+                    if pending_withheld_message:
+                        extra = f"\n\nWithheld message preview (resend or rephrase):\n{preview}"
+                    _upsert_action_required(
+                        messages,
+                        (
+                            "You emitted an end step, but the human user has not received a final visible summary of what happened.\n"
+                            "Do NOT end yet. Send a message step now (prefer purpose='final') summarizing results, then end.\n\n"
+                            f"Current task list:\n{rendered}"
+                            f"{extra}"
+                        ),
+                    )
+                    current_turn += 1
+                    continue
             return current_turn + 1, last_stats, True
 
         if user_messages and has_incomplete_tasks(task_manager) and not should_render_user_messages(task_manager, user_messages):

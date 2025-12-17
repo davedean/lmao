@@ -7,7 +7,7 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 from .jsonish import iter_jsonish_candidates, try_load_jsonish
 
 
-PROTOCOL_VERSION = "1"
+PROTOCOL_VERSION = "2"
 SUPPORTED_VERSIONS = {"1", "2"}
 TASK_TOOL_NAMES = {"add_task", "complete_task", "delete_task", "list_tasks"}
 
@@ -167,6 +167,8 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
     lowered = version.lower()
     if lowered in ("v1", "v2"):
         version = lowered[1:]
+    if not version:
+        version = PROTOCOL_VERSION
     if version not in SUPPORTED_VERSIONS:
         raise ProtocolError(f"assistant_turn.version must be one of {sorted(SUPPORTED_VERSIONS)}")
 

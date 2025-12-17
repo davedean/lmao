@@ -83,7 +83,9 @@ def _upsert_governance_notice(
         "- If you are using the task list (recommended for multi-step work), complete the tasks before sending message steps with purpose 'progress' or 'final'.\n"
         "- If you need user input, send a message step with purpose 'clarification'.\n"
         "- If you cannot finish, send a message step with purpose 'cannot_finish' (and you may end).\n"
-        "- The loop stops ONLY when you include an explicit end step; a message step alone never ends the session.\n"
+        "- A message step alone never ends the session.\n"
+        "- In headless mode, the run stops ONLY when you include an explicit end step.\n"
+        "- In interactive mode, an explicit end step signals you are finished; the user may continue with a new prompt.\n"
         "- Otherwise, use tool_call steps to add/complete/delete tasks until the list is complete."
         f"{strict_next}"
     )
@@ -624,7 +626,11 @@ def run_loop(
         )
         turn = next_turn
         if ended:
-            return
+            if headless:
+                return
+            print(
+                f"{COLOR_DIM}(model requested end; enter a new prompt to continue, or press Ctrl-D to exit){COLOR_RESET}"
+            )
         if headless:
             # Headless mode has no interactive user to provide follow-ups. If the model did not end,
             # prompt it to continue autonomously (tools or final+end) toward the original request.

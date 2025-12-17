@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -212,7 +211,7 @@ def resolve_model_cache_path() -> Path:
 class OpenRouterModelDiscovery:
     """Fetches and caches metadata for OpenRouter's free models."""
 
-    DEFAULT_TTL_SECONDS = 3600
+    DEFAULT_TTL_SECONDS = 86400
 
     def __init__(
         self,
@@ -332,12 +331,10 @@ class OpenRouterFreeModelSelector:
 
     MAX_PARAMETER_ESTIMATE = 1_760_000_000_000
     MAX_CONTEXT_LENGTH = 32_000
-    SHORTLIST_SIZE = 5
+    SHORTLIST_SIZE = 7
     SHORTLIST_MIN_SIZE = 2
     SHORTLIST_SCORE_SLACK_POINTS = 8.0
     SHORTLIST_SCORE_SLACK_RATIO = 0.92
-    SHORTLIST_VALIDATION_TARGET = 2
-    WEIGHT_TEMPERATURE = 6.0
 
     def __init__(
         self,
@@ -388,9 +385,9 @@ class OpenRouterFreeModelSelector:
 
         scored = self._score_candidates(remaining)
         shortlist = self._build_shortlist(scored)
-        validated = self._validate_shortlist(shortlist, validation_errors)
-        if validated:
-            return self._choose_weighted(validated, scored)
+        chosen = self._choose_first_validated(shortlist, validation_errors)
+        if chosen:
+            return chosen
 
         remaining_ids = {candidate.model_id for candidate in shortlist}
         for candidate in [candidate for candidate, _score in scored if candidate.model_id not in remaining_ids]:
@@ -430,13 +427,14 @@ class OpenRouterFreeModelSelector:
             shortlisted = [candidate for candidate, _score in scored[: min(self.SHORTLIST_MIN_SIZE, len(scored))]]
         return shortlisted
 
-    def _validate_shortlist(
+    def _choose_first_validated(
         self,
         shortlist: Sequence[OpenRouterModelCandidate],
         validation_errors: list[str],
-    ) -> list[OpenRouterModelCandidate]:
-        validated: list[OpenRouterModelCandidate] = []
-        for candidate in shortlist:
+    ) -> Optional[OpenRouterModelCandidate]:
+        randomized = list(shortlist)
+        self._rng.shuffle(randomized)
+        for candidate in randomized:
             if not candidate.accepts_text_input():
                 validation_errors.append(f"{candidate.model_id}: not text-input")
                 continue
@@ -444,25 +442,8 @@ class OpenRouterFreeModelSelector:
             if not valid:
                 validation_errors.append(f"{candidate.model_id}: {reason}")
                 continue
-            validated.append(candidate)
-            if len(validated) >= min(self.SHORTLIST_VALIDATION_TARGET, len(shortlist)):
-                break
-        return validated
-
-    def _choose_weighted(
-        self,
-        candidates: Sequence[OpenRouterModelCandidate],
-        scored: Sequence[tuple[OpenRouterModelCandidate, float]],
-    ) -> OpenRouterModelCandidate:
-        if len(candidates) == 1:
-            return candidates[0]
-        score_by_id = {candidate.model_id: score for candidate, score in scored}
-        best_score = max(score_by_id.get(candidate.model_id, 0.0) for candidate in candidates)
-        weights: list[float] = []
-        for candidate in candidates:
-            score = score_by_id.get(candidate.model_id, 0.0)
-            weights.append(math.exp((score - best_score) / self.WEIGHT_TEMPERATURE))
-        return self._rng.choices(list(candidates), weights=weights, k=1)[0]
+            return candidate
+        return None
 
     def _order_candidates(
         self,

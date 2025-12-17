@@ -1,4 +1,5 @@
 import json
+import random
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,11 @@ class _DummyDiscovery:
 
     def fetch_free_models(self) -> Sequence[OpenRouterModelCandidate]:
         return list(self._candidates)
+
+
+class _NoShuffleRng(random.Random):
+    def shuffle(self, x, random=None):  # type: ignore[override]
+        return
 
 
 def _build_candidate(
@@ -120,6 +126,7 @@ class OpenRouterFreeModelsTests(TestCase):
                 preferences=OpenRouterFreeModelPreferences(),
                 completions_endpoint="https://openrouter.ai/api/v1/chat/completions",
                 api_key="secret",
+                rng=_NoShuffleRng(),
             )
             chosen = selector.select_model()
             self.assertEqual("model-two", chosen.model_id)

@@ -9,7 +9,7 @@ from typing import Any, Mapping
 
 from lmao.matterbridge import get_matterbridge_config
 from lmao.plugins import PLUGIN_API_VERSION
-from lmao.tools.matterbridge_common import (
+from lmao.matterbridge_common import (
     ToolError,
     _resolve_matterbridge_config,
     parse_timeout,

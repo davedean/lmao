@@ -43,6 +43,7 @@ def build_tool_prompt(
     read_only: bool,
     plugins: Optional[Sequence[PluginTool]] = None,
     runtime_tools: Optional[Sequence[RuntimeTool]] = None,
+    headless: bool = False,
 ) -> str:
     resolved = list(allowed_tools)
     tool_catalog = _format_tool_catalog(resolved, plugins, runtime_tools=runtime_tools)
@@ -73,6 +74,11 @@ def build_tool_prompt(
         )
     if "bash" in resolved:
         prompt = f"{prompt}\nNote: 'bash' prompts for confirmation on every command. Use only when necessary."
+    if headless:
+        prompt = (
+            f"{prompt}\nHeadless mode is active: the user cannot respond during the run. "
+            "Do NOT send clarification requests; if you need more information, send a message with purpose='cannot_finish' and end."
+        )
     return prompt
 
 
@@ -175,8 +181,15 @@ def build_system_message(
     allowed_tools: Sequence[str] = (),
     plugins: Optional[Sequence[PluginTool]] = None,
     runtime_tools: Optional[Sequence[RuntimeTool]] = None,
+    headless: bool = False,
 ) -> Dict[str, str]:
-    tool_prompt = build_tool_prompt(list(allowed_tools), read_only, plugins=plugins, runtime_tools=runtime_tools)
+    tool_prompt = build_tool_prompt(
+        list(allowed_tools),
+        read_only,
+        plugins=plugins,
+        runtime_tools=runtime_tools,
+        headless=headless,
+    )
     content = (
         f"{tool_prompt}\n"
         f"Working directory: {workdir}\n"

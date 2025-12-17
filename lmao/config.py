@@ -15,6 +15,8 @@ T = TypeVar("T")
 class UserConfig:
     provider: Optional[ProviderName] = None
     mode: Optional[str] = None
+    default_prompt: Optional[str] = None
+    headless: Optional[bool] = None
     multiline: Optional[bool] = None
     silent_tools: Optional[bool] = None
     no_stats: Optional[bool] = None
@@ -53,6 +55,8 @@ class ConfigLoadResult:
 DEFAULT_CONFIG_TEMPLATE = """[core]
 provider = lmstudio
 mode = normal
+default_prompt =
+headless = false
 multiline = false
 silent_tools = false
 no_stats = false
@@ -210,6 +214,8 @@ def load_user_config(path: Path) -> ConfigLoadResult:
         config = UserConfig(
             provider=_read_string(parser, "core", "provider"),
             mode=_read_string(parser, "core", "mode"),
+            default_prompt=_read_string(parser, "core", "default_prompt"),
+            headless=_read_bool(parser, "core", "headless"),
             multiline=_read_bool(parser, "core", "multiline"),
             silent_tools=_read_bool(parser, "core", "silent_tools"),
             no_stats=_read_bool(parser, "core", "no_stats"),

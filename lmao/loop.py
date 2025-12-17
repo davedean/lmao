@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
 from .governance import (
+    MESSAGE_PURPOSE_CLARIFICATION,
     can_end_conversation,
     has_incomplete_tasks,
     should_render_user_messages,
@@ -53,6 +54,7 @@ def _upsert_governance_notice(
     messages: List[Dict[str, str]],
     task_manager: TaskListManager,
     gate_violations: int,
+    headless: bool = False,
 ) -> None:
     """
     Keep a single up-to-date governance notice at the end of the message history.
@@ -84,6 +86,12 @@ def _upsert_governance_notice(
         "- Otherwise, use tool_call steps to add/complete/delete tasks until the list is complete."
         f"{strict_next}"
     )
+    if headless:
+        content = (
+            f"{content}\n"
+            "Headless reminder: the user cannot respond after the initial prompt, so do not send clarification requests. "
+            "If you need more information, send a message step with purpose 'cannot_finish', then end."
+        )
     # Same Qwen3 caveat: send as a user-role instruction with a clear prefix.
     _remove_prefixed_messages(messages, GOVERNANCE_NOTICE_PREFIX)
     messages.append({"role": "user", "content": f"{GOVERNANCE_NOTICE_PREFIX}\n{LOOP_PREFIX} {content}"})
@@ -139,7 +147,13 @@ def run_agent_turn(
         return "\n".join(f"    {line}" for line in text.splitlines())
 
     while True:
-        _upsert_governance_notice(messages, task_manager, gate_violations)
+        headless_run = bool(runtime_context.headless) if runtime_context else False
+        _upsert_governance_notice(
+            messages,
+            task_manager,
+            gate_violations,
+            headless=headless_run,
+        )
         result = client.call(messages)
         assistant_reply = result.content
         last_stats = result.stats
@@ -233,17 +247,25 @@ def run_agent_turn(
         label_color = COLOR_BLUE
         thinks, user_messages, has_end = collect_steps(turn_obj.steps)
         tool_call_payloads = collect_tool_calls(turn_obj.steps)
+        clarification_requested = (
+            headless_run
+            and any(msg.purpose == MESSAGE_PURPOSE_CLARIFICATION for msg in user_messages)
+        )
 
         if debug_logger:
             step_summary = ",".join(step.type for step in turn_obj.steps) if turn_obj.steps else "(no steps)"
             print(f"{COLOR_DIM}[protocol] ok steps={step_summary}{COLOR_RESET}")
 
         print(f"\n{label_color}[assistant #{current_turn}]{COLOR_RESET}")
+        if clarification_requested:
+            print(
+                f"{COLOR_DIM}(clarification requests are disallowed in headless mode; please emit purpose='cannot_finish' and end){COLOR_RESET}"
+            )
         if thinks:
             think_preview = _truncate_preview("\n\n".join(step.content for step in thinks), max_lines=3, max_chars=240)
             if think_preview:
                 print(f"{COLOR_DIM}(think preview)\n{think_preview}{COLOR_RESET}")
-        if user_messages and should_render_user_messages(task_manager, user_messages):
+        if user_messages and should_render_user_messages(task_manager, user_messages) and not clarification_requested:
             combined = "\n\n".join(step.content for step in user_messages)
             print(f"{combined}\n")
             # Once we have shown any message to the user, clear any previously withheld message requirement.
@@ -253,7 +275,7 @@ def run_agent_turn(
         elif tool_call_payloads:
             tools = ", ".join(call.tool for call in tool_call_payloads)
             print(f"{COLOR_DIM}(requesting tool(s): {tools}){COLOR_RESET}\n")
-        elif user_messages:
+        elif user_messages and not clarification_requested:
             # Withhold user-visible content until tasks are complete (unless clarification/cannot_finish).
             combined = "\n\n".join(step.content for step in user_messages)
             pending_withheld_message = combined
@@ -265,6 +287,17 @@ def run_agent_turn(
 
         # Preserve protocol conversation history for the model by storing the JSON turn verbatim.
         messages.append({"role": "assistant", "content": assistant_reply})
+        if clarification_requested:
+            _upsert_action_required(
+                messages,
+                (
+                    "Headless mode is active: the human user cannot respond, so do NOT issue clarification requests."
+                    " If you need more information, send a message step with purpose 'cannot_finish' and end."
+                ),
+            )
+            gate_violations += 1
+            current_turn += 1
+            continue
 
         if thinks and not user_messages and not tool_call_payloads and not has_end:
             think_only_turns += 1
@@ -441,6 +474,7 @@ def run_loop(
     yolo_enabled: bool,
     read_only: bool,
     show_stats: bool,
+    headless: bool = False,
     multiline: bool = False,
     plugin_dirs: Optional[Sequence[Path]] = None,
     debug_logger: Optional[DebugLogger] = None,
@@ -449,7 +483,10 @@ def run_loop(
     base = workdir.resolve()
     if debug_logger:
         debug_logger.log("debug.enabled", f"writing debug logs to {debug_logger.path}")
-        debug_logger.log("context", f"workdir={base} yolo_enabled={yolo_enabled} read_only={read_only}")
+        debug_logger.log(
+            "context",
+            f"workdir={base} yolo_enabled={yolo_enabled} read_only={read_only} headless={headless}",
+        )
 
     notes = gather_context(base)
     # Ensure an active task list exists (may be empty).
@@ -469,6 +506,8 @@ def run_loop(
     allowed_tools = get_allowed_tools(read_only=read_only, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))
     allowed_tools = list(allowed_tools) + sorted(runtime_tools.keys())
     mode_label = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
+    if headless:
+        mode_label += " (headless)"
     last_prompt_stats: Optional[LLMCallStats] = None
 
     def format_user_prompt() -> str:
@@ -493,6 +532,7 @@ def run_loop(
             allowed_tools=allowed_tools,
             plugins=list(plugins.values()),
             runtime_tools=list(runtime_tools.values()),
+            headless=headless,
         )
     ]
     user_input = initial_prompt
@@ -505,6 +545,7 @@ def run_loop(
         skill_roots=skill_roots,
         yolo_enabled=yolo_enabled,
         read_only=read_only,
+        headless=headless,
         task_manager=task_manager,
         debug_logger=debug_logger,
     )
@@ -513,6 +554,8 @@ def run_loop(
         debug_logger.log("user.initial_prompt", initial_prompt)
 
     if user_input is None:
+        if headless:
+            return
         result = read_user_prompt(user_prompt, multiline_default=multiline)
         if result.eof:
             return
@@ -527,6 +570,8 @@ def run_loop(
                 debug_logger.log("loop.stop", f"reason=max_turns reached={max_turns}")
             return
         if not user_input:
+            if headless:
+                return
             result = read_user_prompt(user_prompt, multiline_default=multiline)
             if result.eof:
                 return
@@ -562,7 +607,7 @@ def run_loop(
             debug_logger=debug_logger,
         )
         turn = next_turn
-        if ended:
+        if ended or headless:
             return
         user_prompt = format_user_prompt()
 

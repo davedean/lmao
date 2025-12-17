@@ -35,6 +35,7 @@ class RuntimeContext:
     skill_roots: Sequence[Path]
     yolo_enabled: bool
     read_only: bool
+    headless: bool = False
     task_manager: Optional[TaskListManager] = None
     debug_logger: Optional[DebugLogger] = None
 

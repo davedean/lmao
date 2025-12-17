@@ -77,6 +77,7 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Pluggable tools: shipped plugins under `lmao/tools` are loaded automatically (see `lmao/tools/demo-plugin/tool.py` for a minimal echo example). Additional plugin directories are not yet supported via CLI.
 - Path safety: all tool paths are constrained to the working directory. User skill folders under `~/.config/agents/skills` are also allowed when present.
 - Task lists: each run starts with an active list (empty by default). If the model adds tasks, it is expected to keep the list in sync while it works instead of pausing for confirmation.
+- Headless mode: `--headless` (or `headless = true` in `lmao.conf`) runs without interactive prompts. Provide a prompt via the positional argument, `--prompt-file`, or `default_prompt` in the config; the loop enforces that the agent skips clarification requests and emits a final summary before ending.
 
 ## Skills & AGENTS
 - Skills live in `skills/<skill-name>/SKILL.md` with YAML frontmatter; supporting files stay in the same folder. User-specific skills can live in `~/.config/agents/skills/<skill-name>/SKILL.md`.
@@ -97,6 +98,7 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Loop control: `--max-turns`, `--silent-tools`, `--max-tool-lines`, `--max-tool-chars`
 - Output: `--no-stats` (hide token/latency/bytes stats in the prompt/output)
 - Prompting: `--prompt-file` (seed long prompts), optional interactive prompt when the positional prompt is omitted
+- Headless runtime: `--headless` keeps the loop from prompting; pair it with an explicit prompt (or `default_prompt` in `lmao.conf`) so the agent can finish without clarification requests.
 - Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory
 - Config: `--config PATH`, `--no-config`, `--print-config` (print the resolved defaults without secrets), `--config-init` (write the default config if missing)
 

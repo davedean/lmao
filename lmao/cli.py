@@ -139,6 +139,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Safety mode: normal/yolo/readonly (default: normal; config can set a different default)",
     )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run without interactive prompts (headless runtime mode)",
+    )
     parser.add_argument("--yolo", action="store_true", help="Legacy: enable risky bash tool (use --mode yolo instead)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log")
     parser.add_argument("--read-only", action="store_true", help="Legacy: disable destructive plugins (use --mode readonly instead)")
@@ -162,6 +167,7 @@ def _config_summary(
     no_stats: bool,
     multiline: bool,
     mode: str,
+    headless_mode: bool,
     read_only: bool,
     yolo_enabled: bool,
     workdir: Path,
@@ -184,6 +190,7 @@ def _config_summary(
         "no_stats": no_stats,
         "multiline": multiline,
         "mode": mode,
+        "headless": headless_mode,
         "read_only": read_only,
         "yolo_enabled": yolo_enabled,
         "workdir": str(workdir),
@@ -265,6 +272,7 @@ def main() -> None:
     mode = mode_value.lower()
     mode_read_only = mode in ("ro", "readonly", "read-only")
     mode_yolo = mode == "yolo"
+    headless_mode = args.headless or bool(config.headless)
     if mode != "normal" and (args.read_only or args.yolo):
         parser.error("Use --mode without --read-only/--yolo; the new flag replaces the legacy ones.")
     read_only = mode_read_only or (mode == "normal" and args.read_only)
@@ -352,6 +360,7 @@ def main() -> None:
                 no_stats=no_stats,
                 multiline=multiline,
                 mode=mode,
+                headless_mode=headless_mode,
                 read_only=read_only,
                 yolo_enabled=yolo_enabled,
                 workdir=base_dir,
@@ -363,6 +372,12 @@ def main() -> None:
         return
 
     initial_prompt = read_prompt(args)
+    if headless_mode and initial_prompt is None and config.default_prompt:
+        initial_prompt = config.default_prompt
+    if headless_mode and not initial_prompt:
+        parser.error(
+            "Headless mode requires a predefined prompt (positional prompt, --prompt-file, or default_prompt in config)."
+        )
 
     client = LLMClient(
         endpoint=provider_settings.endpoint,
@@ -389,6 +404,7 @@ def main() -> None:
             yolo_enabled=yolo_enabled,
             read_only=read_only,
             show_stats=not no_stats,
+            headless=headless_mode,
             multiline=multiline,
             plugin_dirs=[built_in_plugins_dir],
             debug_logger=debug_logger,

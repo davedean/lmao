@@ -31,3 +31,8 @@ class ContextDiscoveryTests(TestCase):
         self.assertIn("Repo instructions", notes.repo_notes)
         self.assertEqual("", notes.user_notes)
         self.assertIsNone(notes.user_skills)
+
+    def test_build_tool_prompt_mentions_headless(self) -> None:
+        prompt = context.build_tool_prompt([], read_only=False, headless=True)
+        self.assertIn("Headless mode is active", prompt)
+        self.assertIn("purpose='cannot_finish'", prompt)

@@ -14,6 +14,7 @@
 - Path safety keeps targets under the working directory; writes into skill roots must stay inside `skills/<name>/`.
 - Plugins: any `tool.py` under `lmao/tools/**` is loaded; plugin manifest controls if it is allowed in read-only, normal, or yolo modes, and whether it needs per-use confirmation. Core file tools, task tools, git add/commit, and bash all ship as plugins under `lmao/tools/*`; git/bash are available in normal/yolo but blocked in read-only. Bash always asks for confirmation.
 - Read-only mode disables write/mkdir/move and any plugin that opts out of read-only (most destructive ones).
+- Headless mode (`--headless` or `headless = true` in `lmao.conf`) runs the loop without interactive prompts; provide a prompt via CLI, `--prompt-file`, or `default_prompt` in the config, and the model will be instructed to avoid clarification requests and finish with a final summary.
 
 ## Build, Test, and Development Commands
 - `python -m lmao --help` — show CLI flags and defaults.

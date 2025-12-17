@@ -286,10 +286,13 @@ def main() -> None:
         parser.error(str(exc))
 
     temperature = pick_first_non_none((args.temperature, config.temperature), 0.2)
+    assert temperature is not None
     top_p = pick_first_non_none((args.top_p, config.top_p), None)
     max_tokens = pick_first_non_none((args.max_tokens, config.max_tokens), None)
     max_tool_lines = pick_first_non_none((args.max_tool_lines, config.max_tool_lines), 8)
+    assert max_tool_lines is not None
     max_tool_chars = pick_first_non_none((args.max_tool_chars, config.max_tool_chars), 400)
+    assert max_tool_chars is not None
     max_turns = args.max_turns if args.max_turns is not None else config.max_turns
 
     silent_tools = args.silent_tools or bool(config.silent_tools)

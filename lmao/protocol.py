@@ -213,19 +213,19 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
             if tool not in set(allowed_tools):
                 raise ProtocolError(f"steps[{idx}].call.tool '{tool}' is not allowed")
             target = str(call_obj.get("target", "") or "")
-            meta_val = call_obj.get("meta", None)
-            meta: Optional[Dict[str, Any]] = None
-            if meta_val is not None:
-                meta = _require_dict(meta_val, f"steps[{idx}].call.meta")
+            call_meta_val = call_obj.get("meta", None)
+            call_meta: Optional[Dict[str, Any]] = None
+            if call_meta_val is not None:
+                call_meta = _require_dict(call_meta_val, f"steps[{idx}].call.meta")
 
             if version == "1":
-                args: Any = _coerce_args_v1(call_obj.get("args", ""))
+                call_args: Any = _coerce_args_v1(call_obj.get("args", ""))
             else:
-                args = call_obj.get("args", None)
+                call_args = call_obj.get("args", None)
             steps.append(
                 ToolCallStep(
                     type="tool_call",
-                    call=ToolCallPayload(tool=tool, target=target, args=args, meta=meta),
+                    call=ToolCallPayload(tool=tool, target=target, args=call_args, meta=call_meta),
                 )
             )
             continue
@@ -247,16 +247,21 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
         if step_type in set(allowed_tools):
             tool = step_type
             target = str(step_obj.get("target", "") or "")
-            meta_val = step_obj.get("meta", None)
-            meta: Optional[Dict[str, Any]] = None
-            if meta_val is not None:
-                meta = _require_dict(meta_val, f"steps[{idx}].meta")
+            direct_meta_val = step_obj.get("meta", None)
+            direct_meta: Optional[Dict[str, Any]] = None
+            if direct_meta_val is not None:
+                direct_meta = _require_dict(direct_meta_val, f"steps[{idx}].meta")
             payload = step_obj.get("args", None)
             if version == "1":
-                args: Any = _coerce_args_v1(payload)
+                direct_args: Any = _coerce_args_v1(payload)
             else:
-                args = payload
-            steps.append(ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args, meta=meta)))
+                direct_args = payload
+            steps.append(
+                ToolCallStep(
+                    type="tool_call",
+                    call=ToolCallPayload(tool=tool, target=target, args=direct_args, meta=direct_meta),
+                )
+            )
             continue
 
         raise ProtocolError(f"unsupported step type '{step_type}' at steps[{idx}]")

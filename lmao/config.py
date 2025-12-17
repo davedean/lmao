@@ -113,7 +113,7 @@ def resolve_default_config_path() -> Path:
     return (base / "agents" / "lmao.conf").expanduser()
 
 
-def pick_first_non_none(values: Iterable[Optional[T]], default: T) -> T:
+def pick_first_non_none(values: Iterable[Optional[T]], default: Optional[T]) -> Optional[T]:
     for value in values:
         if value is not None:
             return value
@@ -145,6 +145,7 @@ def resolve_provider_settings(
             ),
             lmstudio_default_endpoint,
         )
+        assert endpoint is not None
         model = pick_first_non_none(
             (
                 cli_model,
@@ -153,6 +154,7 @@ def resolve_provider_settings(
             ),
             lmstudio_default_model,
         )
+        assert model is not None
         return ProviderSettings(endpoint=endpoint, model=model)
 
     endpoint = pick_first_non_none(
@@ -162,6 +164,7 @@ def resolve_provider_settings(
         ),
         openrouter_default_endpoint,
     )
+    assert endpoint is not None
     model = pick_first_non_none(
         (
             cli_model,
@@ -239,7 +242,7 @@ def load_user_config(path: Path) -> ConfigLoadResult:
 
     try:
         config = UserConfig(
-            provider=_read_string(parser, "core", "provider"),
+            provider=_read_provider_name(parser, "core", "provider"),
             mode=_read_string(parser, "core", "mode"),
             default_prompt=_read_string(parser, "core", "default_prompt"),
             headless=_read_bool(parser, "core", "headless"),
@@ -299,6 +302,20 @@ def _read_string(
         return None
     value = raw.strip()
     return value if value else None
+
+
+def _read_provider_name(
+    parser: configparser.ConfigParser, section: str, option: str
+) -> Optional[ProviderName]:
+    value = _read_string(parser, section, option)
+    if value is None:
+        return None
+    normalized = value.lower()
+    if normalized == "lmstudio":
+        return "lmstudio"
+    if normalized == "openrouter":
+        return "openrouter"
+    raise ValueError(f"Invalid provider value for [{section}] {option}: {value}")
 
 
 def _read_list(

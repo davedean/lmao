@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional, Sequence
 
 from .debug_log import DebugLogger
 from .llm import LLMClient
+from .memory import MemoryState
 from .plugins import PluginTool
 from .task_list import TaskListManager
 
@@ -38,6 +39,7 @@ class RuntimeContext:
     headless: bool = False
     task_manager: Optional[TaskListManager] = None
     debug_logger: Optional[DebugLogger] = None
+    memory_state: Optional[MemoryState] = None
 
 
 def runtime_tool_allowed(tool: RuntimeTool, *, read_only: bool, yolo_enabled: bool) -> bool:

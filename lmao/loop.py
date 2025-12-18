@@ -19,6 +19,16 @@ from .task_list import TaskListManager
 from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
 from .text_utils import truncate_text
+from .memory import (
+    MemoryState,
+    aggressive_compact_messages,
+    compact_messages_if_needed,
+    determine_prompt_budget,
+    is_context_length_error,
+    sanitize_assistant_reply,
+    should_pin_agents_tool_result,
+    truncate_tool_result_for_prompt,
+)
 from .runtime_tools import RuntimeContext, RuntimeTool, build_runtime_tool_registry
 from .user_input import read_user_prompt
 
@@ -188,6 +198,9 @@ def run_agent_turn(
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
 
+    memory_state = runtime_context.memory_state if runtime_context and runtime_context.memory_state else None
+    _, trigger_tokens, target_tokens = determine_prompt_budget(client)
+
     while True:
         headless_run = bool(runtime_context.headless) if runtime_context else False
         _upsert_governance_notice(
@@ -196,7 +209,38 @@ def run_agent_turn(
             gate_violations,
             headless=headless_run,
         )
-        result = client.call(messages)
+        pinned_ids = memory_state.pinned_message_ids if memory_state else set()
+        last_user_message = memory_state.last_user_message if memory_state else None
+        attempt_retry = False
+        while True:
+            compact_messages_if_needed(
+                messages,
+                last_user_message=last_user_message,
+                pinned_message_ids=pinned_ids,
+                trigger_tokens=trigger_tokens,
+                target_tokens=target_tokens,
+                debug_logger=debug_logger,
+            )
+            try:
+                result = client.call(messages)
+                break
+            except RuntimeError as exc:
+                if not attempt_retry and is_context_length_error(str(exc)):
+                    if memory_state:
+                        aggressive_compact_messages(
+                            messages,
+                            last_user_message=last_user_message,
+                            pinned_message_ids=pinned_ids,
+                            debug_logger=debug_logger,
+                        )
+                    attempt_retry = True
+                    if debug_logger:
+                        debug_logger.log(
+                            "memory.compact.retry",
+                            "aggressive compaction triggered after context-length error",
+                        )
+                    continue
+                raise
         assistant_reply = result.content
         last_stats = result.stats
 
@@ -336,8 +380,9 @@ def run_agent_turn(
         else:
             print()
 
-        # Preserve protocol conversation history for the model by storing the JSON turn verbatim.
-        messages.append({"role": "assistant", "content": assistant_reply})
+        # Preserve protocol conversation history for the model by storing the JSON turn without think steps.
+        sanitized_reply = sanitize_assistant_reply(assistant_reply, allowed_tools)
+        messages.append({"role": "assistant", "content": sanitized_reply})
         if headless_input_requested:
             _upsert_action_required(
                 messages,
@@ -455,16 +500,20 @@ def run_agent_turn(
                         "tool.output",
                         f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} output={output}",
                     )
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": (
-                            f"Tool result for {tool_desc}:\n{output}\n"
-                            f"Use this to continue helping the user (request: {last_user!r}). "
-                            "If another tool is needed, call it; otherwise reply to the user now."
-                        ),
-                    }
+                is_pinned = should_pin_agents_tool_result(tool_call.tool, tool_call.target or "")
+                tool_result_content = (
+                    f"Tool result for {tool_desc}:\n{output}\n"
+                    f"Use this to continue helping the user (request: {last_user!r}). "
+                    "If another tool is needed, call it; otherwise reply to the user now."
                 )
+                truncated_content, _ = truncate_tool_result_for_prompt(
+                    tool_result_content,
+                    is_pinned=is_pinned,
+                )
+                tool_message = {"role": "user", "content": truncated_content}
+                messages.append(tool_message)
+                if is_pinned and memory_state:
+                    memory_state.pinned_message_ids.add(id(tool_message))
                 # The user hasn't necessarily seen the implications of this tool result yet.
                 need_user_update = True
                 current_turn += 1
@@ -599,6 +648,7 @@ def run_loop(
     ]
     user_input = initial_prompt
     turn = 1
+    memory_state = MemoryState()
     runtime_ctx = RuntimeContext(
         client=client,
         plugin_tools=plugins,
@@ -610,6 +660,7 @@ def run_loop(
         headless=headless,
         task_manager=task_manager,
         debug_logger=debug_logger,
+        memory_state=memory_state,
     )
 
     if debug_logger and initial_prompt is not None:
@@ -651,7 +702,9 @@ def run_loop(
         if root_request is None:
             root_request = user_input
 
-        messages.append({"role": "user", "content": user_input})
+        user_message = {"role": "user", "content": user_input}
+        messages.append(user_message)
+        memory_state.last_user_message = user_message
         if debug_logger:
             debug_logger.log("user.input", f"turn={turn} content={user_input}")
         next_turn, last_prompt_stats, ended = run_agent_turn(

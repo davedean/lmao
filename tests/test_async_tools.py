@@ -88,15 +88,16 @@ class AsyncToolsTests(TestCase):
         self.assertTrue(poll_payload["success"])
 
         stop = ToolCall(tool="async_stop", target=job_id, args="")
-        stop_result = run_tool(
-            stop,
-            base=self.base,
-            extra_roots=[],
-            skill_roots=[],
-            yolo_enabled=False,
-            read_only=False,
-            plugin_tools=self.plugins,
-        )
+        with patch("builtins.input", return_value=""):
+            stop_result = run_tool(
+                stop,
+                base=self.base,
+                extra_roots=[],
+                skill_roots=[],
+                yolo_enabled=False,
+                read_only=False,
+                plugin_tools=self.plugins,
+            )
         stop_payload = json.loads(stop_result)
         self.assertFalse(stop_payload["success"])
         self.assertIn("not approved", stop_payload["error"])

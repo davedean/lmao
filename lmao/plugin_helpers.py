@@ -10,7 +10,6 @@ from .path_safety import (
     safe_target_path as _safe_target_path,
 )
 from .skills import validate_skill_write_target as _validate_skill_write_target
-from .text_utils import normalize_task_text as _normalize_task_text
 
 
 def safe_target_path(target: str, base: Path, extra_roots: Sequence[Path]) -> Path:
@@ -37,7 +36,3 @@ def find_repo_root(start: Path) -> Path:
     """Find the nearest git repo root from a starting directory."""
     return _find_repo_root(start)
 
-
-def normalize_task_text(text: str) -> str:
-    """Normalize task text for task list plugins."""
-    return _normalize_task_text(text)

@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Sequence
 from .debug_log import DebugLogger
 from .path_safety import safe_target_path
 from .plugins import PluginTool
-from .task_list import TaskListManager
 from .tool_parsing import ToolCall
 from .runtime_tools import RuntimeContext, RuntimeTool, runtime_tool_allowed
 
@@ -72,7 +71,7 @@ def run_tool(
     plugin_tools: Optional[Dict[str, PluginTool]] = None,
     runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
     runtime_context: Optional[RuntimeContext] = None,
-    task_manager: Optional[TaskListManager] = None,
+    task_manager: Optional[Any] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> str:
     tool = tool_call.tool

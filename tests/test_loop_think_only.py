@@ -5,7 +5,6 @@ from unittest import TestCase
 
 from lmao.llm import LLMCallResult, LLMCallStats
 from lmao.loop import run_agent_turn
-from lmao.task_list import TaskListManager
 
 
 class _FakeClient:
@@ -36,7 +35,6 @@ class ThinkOnlyContinuationTests(TestCase):
                 '{"type":"assistant_turn","version":"1","steps":[{"type":"message","purpose":"final","content":"ok"},{"type":"end"}]}',
             ]
         )
-        task_manager = TaskListManager()
         base = Path(".").resolve()
         messages = [{"role": "system", "content": "sys"}]
 
@@ -54,7 +52,6 @@ class ThinkOnlyContinuationTests(TestCase):
                 read_only=False,
                 allowed_tools=[],
                 plugin_tools={},
-                task_manager=task_manager,
                 show_stats=False,
                 debug_logger=None,
             )

@@ -38,7 +38,6 @@ class TestSubagents(unittest.TestCase):
             skill_roots=(),
             yolo_enabled=False,
             read_only=False,
-            task_manager=None,
             debug_logger=None,
         )
         raw = subagent_run_tool(runtime_ctx, "", {"context": "x"}, None)
@@ -64,7 +63,6 @@ class TestSubagents(unittest.TestCase):
             skill_roots=(),
             yolo_enabled=False,
             read_only=False,
-            task_manager=None,
             debug_logger=None,
         )
         raw = subagent_run_tool(runtime_ctx, "", {"objective": "test", "max_turns": 2}, None)
@@ -91,7 +89,6 @@ class TestSubagents(unittest.TestCase):
             skill_roots=(),
             yolo_enabled=False,
             read_only=False,
-            task_manager=None,
             debug_logger=None,
         )
         raw = subagent_run_tool(runtime_ctx, "", {"objective": "test", "max_turns": 2}, None)
@@ -118,7 +115,6 @@ class TestSubagents(unittest.TestCase):
             skill_roots=(),
             yolo_enabled=False,
             read_only=False,
-            task_manager=None,
             debug_logger=None,
         )
         raw = subagent_run_tool(runtime_ctx, "objective from target", "", None)
@@ -146,7 +142,6 @@ class TestSubagents(unittest.TestCase):
             skill_roots=(),
             yolo_enabled=False,
             read_only=False,
-            task_manager=None,
             debug_logger=None,
         )
         call = ToolCall(tool="subagent_run", target="", args={"objective": "x"}, meta=None)
@@ -160,7 +155,6 @@ class TestSubagents(unittest.TestCase):
             plugin_tools=plugin_tools,
             runtime_tools=runtime_tools,
             runtime_context=runtime_ctx,
-            task_manager=None,
             debug_logger=None,
         )
         payload = json.loads(raw)

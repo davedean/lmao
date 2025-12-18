@@ -74,16 +74,12 @@ def build_tool_prompt(
         "Protocol v1 is still accepted, but prefer v2 (structured args/meta).",
         "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
         "Steps: think | tool_call | message | end. Tool outputs are JSON with success + data/error.",
-        "Important: only task tools (add_task/complete_task/delete_task/list_tasks) may appear directly as steps; ALL other tools must be called via a tool_call step.",
         "Ending rule: the session ends ONLY when you include an explicit end step; a message step (even purpose='final') does NOT end the loop.",
         "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
-        "Task list: you can use add_task/list_tasks/complete_task to track work; for any multi-step plan, you must use the task list to outline and track progress.",
-        "If you use the task list, complete tasks before sending message steps with purpose 'progress' or 'final'; use purpose='clarification' to ask the user a question.",
-        "Task steps: {\"type\":\"add_task\",\"args\":{\"task\":\"...\"}} and {\"type\":\"list_tasks\"} (also complete_task/delete_task).",
         "Message purpose values: progress | clarification | cannot_finish | final (default: progress).",
         "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
         "Tool calls (v1): {\"type\":\"tool_call\",\"call\":{\"tool\":\"read\",\"target\":\"README.md\",\"args\":\"lines:1-40\"}}",
-        "Tool calls (v2): {\"type\":\"tool_call\",\"call\":{\"tool\":\"async_bash\",\"target\":\"\",\"args\":{\"command\":\"sleep 20\"},\"meta\":{\"track_task\":true}}}",
+        "Tool calls (v2): {\"type\":\"tool_call\",\"call\":{\"tool\":\"async_bash\",\"target\":\"\",\"args\":{\"command\":\"sleep 20\"},\"meta\":{\"timeout_s\":10}}}",
         "Note: tool 'usage' examples below are already wrapped as tool_call steps; copy them verbatim.",
         "Example (valid JSON): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"tool_call\",\"call\":{\"tool\":\"ls\",\"target\":\"\",\"args\":\"\"}}]}",
         "Example (finish): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"message\",\"purpose\":\"final\",\"format\":\"markdown\",\"content\":\"...\"},{\"type\":\"end\",\"reason\":\"completed\"}]}",
@@ -205,7 +201,6 @@ def gather_context(workdir: Path) -> NotesContext:
 def build_system_message(
     workdir: Path,
     notes: NotesContext,
-    initial_task_list: Optional[str] = None,
     read_only: bool = False,
     yolo_enabled: bool = False,
     allowed_tools: Sequence[str] = (),
@@ -234,9 +229,6 @@ def build_system_message(
         content = f"{content}\nSkills discovered at start (no tool call):\n{skills_lines}"
     else:
         content = f"{content}\nSkills discovered at start: none found."
-
-    if initial_task_list:
-        content = f"{content}\n\nInitial task list:\n{initial_task_list}"
 
     if notes.user_skills:
         content = f"{content}\n\nUser skills directory: {notes.user_skills}\nYou may read/find/ls within this path alongside repo skills."

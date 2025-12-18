@@ -21,10 +21,3 @@ def truncate_text(text: str, *, max_lines: int, max_chars: int, suffix: str = "\
 def summarize_output(output: str, max_lines: int = 8, max_chars: int = 400) -> str:
     return truncate_text(output, max_lines=max_lines, max_chars=max_chars)
 
-
-def normalize_task_text(text: str) -> str:
-    """Normalize task text: remove numbering, collapse whitespace, avoid newlines."""
-    cleaned = text.replace("\n", " ").replace("\r", " ")
-    cleaned = re.sub(r"^\s*\d+\.\s+", "", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned

@@ -8,7 +8,6 @@ from lmao.llm import LLMCallResult, LLMCallStats
 from lmao.loop import run_agent_turn
 from lmao.plugins import discover_plugins
 from lmao.runtime_tools import RuntimeContext
-from lmao.task_list import TaskListManager
 
 
 class _FakeClient:
@@ -42,9 +41,6 @@ class HeadlessEndAutoSummaryTests(TestCase):
 
         (base / "a.txt").write_text("x\ny\nz\nline4\n", encoding="utf-8")
 
-        task_manager = TaskListManager()
-        task_manager.new_list()
-
         client = _FakeClient(
             replies=[
                 '{"type":"assistant_turn","version":"1","steps":[{"type":"tool_call","call":{"tool":"read","target":"a.txt","args":"lines:4"}}]}',
@@ -61,7 +57,6 @@ class HeadlessEndAutoSummaryTests(TestCase):
             yolo_enabled=False,
             read_only=False,
             headless=True,
-            task_manager=task_manager,
             debug_logger=None,
         )
 
@@ -83,11 +78,9 @@ class HeadlessEndAutoSummaryTests(TestCase):
                 plugin_tools=plugins,
                 runtime_tools={},
                 runtime_context=runtime_ctx,
-                task_manager=task_manager,
-                show_stats=False,
-                debug_logger=None,
-            )
+            show_stats=False,
+            debug_logger=None,
+        )
 
         self.assertTrue(ended)
         self.assertEqual(2, client.calls)
-

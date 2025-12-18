@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .path_safety import normalize_path_for_output, parse_line_range, safe_target_path
-from .text_utils import normalize_task_text, summarize_output
+from .text_utils import summarize_output
 from .tool_dispatch import (
     confirm_plugin_run,
     get_allowed_tools,
@@ -30,7 +30,6 @@ __all__ = [
     "json_success",
     "load_candidate",
     "normalize_path_for_output",
-    "normalize_task_text",
     "parse_line_range",
     "parse_tool_calls",
     "plugin_allowed",
@@ -38,4 +37,3 @@ __all__ = [
     "safe_target_path",
     "summarize_output",
 ]
-

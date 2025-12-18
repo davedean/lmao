@@ -7,7 +7,6 @@ from unittest import TestCase
 from lmao.llm import LLMCallResult, LLMCallStats
 from lmao.loop import ACTION_REQUIRED_PREFIX, run_agent_turn
 from lmao.runtime_tools import RuntimeContext
-from lmao.task_list import TaskListManager
 
 
 class _FakeClient:
@@ -43,9 +42,6 @@ class HeadlessClarificationTests(TestCase):
             ]
         )
 
-        task_manager = TaskListManager()
-        task_manager.new_list()
-
         runtime_ctx = RuntimeContext(
             client=client,
             plugin_tools={},
@@ -55,7 +51,6 @@ class HeadlessClarificationTests(TestCase):
             yolo_enabled=False,
             read_only=False,
             headless=True,
-            task_manager=task_manager,
             debug_logger=None,
         )
 
@@ -76,7 +71,6 @@ class HeadlessClarificationTests(TestCase):
                 plugin_tools={},
                 runtime_tools={},
                 runtime_context=runtime_ctx,
-                task_manager=task_manager,
                 show_stats=False,
                 debug_logger=None,
             )

@@ -5,7 +5,6 @@ from unittest import TestCase
 
 from lmao.plugins import discover_plugins
 from lmao.tools import ToolCall, run_tool
-from lmao.task_list import TaskListManager
 
 
 class ScratchpadToolTests(TestCase):

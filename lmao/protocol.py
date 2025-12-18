@@ -9,7 +9,6 @@ from .jsonish import iter_jsonish_candidates, try_load_jsonish
 
 PROTOCOL_VERSION = "2"
 SUPPORTED_VERSIONS = {"1", "2"}
-TASK_TOOL_NAMES = {"add_task", "complete_task", "delete_task", "list_tasks"}
 
 
 class ProtocolError(ValueError):
@@ -112,34 +111,6 @@ def _wrap_single_step(obj: Dict[str, Any]) -> Dict[str, Any]:
     return {"type": "assistant_turn", "version": PROTOCOL_VERSION, "steps": [obj]}
 
 
-def _parse_task_tool_alias_step(step_obj: Dict[str, Any], allowed_tools: Sequence[str], idx: int) -> ToolCallStep:
-    tool = _require_str(step_obj.get("type", ""), f"steps[{idx}].type")
-    if tool not in set(allowed_tools):
-        raise ProtocolError(f"steps[{idx}].type '{tool}' is not allowed")
-
-    payload = step_obj.get("args", "")
-    target = str(step_obj.get("target", "") or "")
-
-    if tool == "add_task":
-        if isinstance(payload, dict):
-            text = payload.get("task") or payload.get("text") or payload.get("args") or ""
-            args = _coerce_args_v1(text)
-        else:
-            args = _coerce_args_v1(payload)
-        return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args, meta=None))
-
-    if tool in ("complete_task", "delete_task"):
-        if isinstance(payload, dict):
-            task_id = payload.get("id") or payload.get("task_id") or payload.get("args") or payload.get("target") or ""
-            args = _coerce_args_v1(task_id)
-        else:
-            args = _coerce_args_v1(payload)
-        return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args, meta=None))
-
-    # list_tasks
-    args = _coerce_args_v1(payload)
-    return ToolCallStep(type="tool_call", call=ToolCallPayload(tool=tool, target=target, args=args, meta=None))
-
 
 def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> AssistantTurn:
     acceptable_types = {"assistant_turn", "think", "tool_call", "message", "end"}
@@ -233,13 +204,6 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
         if step_type == "end":
             reason = str(step_obj.get("reason", "") or "completed").strip() or "completed"
             steps.append(EndStep(type="end", reason=reason))
-            continue
-
-        # Back-compat / model convenience: allow task tool steps directly (they compile to tool_call).
-        if step_type in TASK_TOOL_NAMES:
-            if step_type not in set(allowed_tools):
-                raise ProtocolError(f"steps[{idx}].type '{step_type}' is not allowed")
-            steps.append(_parse_task_tool_alias_step(step_obj, allowed_tools=allowed_tools, idx=idx))
             continue
 
         # Back-compat / model convenience: allow direct tool steps (type == tool name) for any allowed tool.

@@ -7,16 +7,8 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
-from .governance import (
-    MESSAGE_PURPOSE_CLARIFICATION,
-    MESSAGE_PURPOSE_CANNOT_FINISH,
-    can_end_conversation,
-    has_incomplete_tasks,
-    should_render_user_messages,
-)
 from .llm import LLMCallStats, LLMClient
 from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
-from .task_list import TaskListManager
 from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
 from .text_utils import truncate_text
@@ -38,7 +30,6 @@ COLOR_GREEN = "\033[92m"
 COLOR_DIM = "\033[2m"
 COLOR_RESET = "\033[0m"
 
-GOVERNANCE_NOTICE_PREFIX = "GOVERNANCE_NOTICE:"
 ACTION_REQUIRED_PREFIX = "ACTION_REQUIRED:"
 LOOP_PREFIX = "LOOP:"
 
@@ -96,59 +87,12 @@ def _upsert_action_required(messages: List[Dict[str, str]], content: str) -> Non
     messages.append({"role": "user", "content": f"{ACTION_REQUIRED_PREFIX}\n{LOOP_PREFIX} {content}"})
 
 
-def _upsert_governance_notice(
-    messages: List[Dict[str, str]],
-    task_manager: TaskListManager,
-    gate_violations: int,
-    headless: bool = False,
-) -> None:
-    """
-    Keep a single up-to-date governance notice at the end of the message history.
-
-    This avoids the prompt growing with repeated reminders and helps keep the model un-stuck.
-    """
-    if not has_incomplete_tasks(task_manager) and gate_violations <= 0:
-        _remove_prefixed_messages(messages, GOVERNANCE_NOTICE_PREFIX)
-        return
-
-    rendered = task_manager.render_tasks()
-    strict_next = ""
-    if gate_violations > 0:
-        first_incomplete = next((t for t in task_manager.tasks if not t.done), None)
-        if first_incomplete:
-            strict_next = (
-                "\nExample next step (valid JSON):\n"
-                '{"type":"assistant_turn","version":"2","steps":[{"type":"tool_call","call":{"tool":"complete_task","target":"","args":"'
-                + str(first_incomplete.id)
-                + '"}}]}'
-            )
-    content = (
-        f"{GOVERNANCE_NOTICE_PREFIX}\n"
-        f"Current task list:\n{rendered}\n\n"
-        "Rules:\n"
-        "- If you are using the task list (recommended for multi-step work), complete the tasks before sending message steps with purpose 'progress' or 'final'.\n"
-        "- If you need user input, send a message step with purpose 'clarification'.\n"
-        "- If you cannot finish, send a message step with purpose 'cannot_finish' (and you may end).\n"
-        "- A message step alone never ends the session.\n"
-        "- In headless mode, the run stops ONLY when you include an explicit end step.\n"
-        "- In interactive mode, an explicit end step signals you are finished; the user may continue with a new prompt.\n"
-        "- Otherwise, use tool_call steps to add/complete/delete tasks until the list is complete."
-        f"{strict_next}"
-    )
-    if headless:
-        content = (
-            f"{content}\n"
-            "Headless reminder: the user cannot respond after the initial prompt, so do not ask questions or request confirmation. "
-            "Proceed autonomously: choose reasonable defaults, state assumptions briefly, and continue. "
-            "Only if you truly cannot proceed, send a message step with purpose 'cannot_finish', then end."
-        )
-    # Same Qwen3 caveat: send as a user-role instruction with a clear prefix.
-    _remove_prefixed_messages(messages, GOVERNANCE_NOTICE_PREFIX)
-    messages.append({"role": "user", "content": f"{GOVERNANCE_NOTICE_PREFIX}\n{LOOP_PREFIX} {content}"})
-
-
 def _truncate_preview(text: str, max_lines: int = 4, max_chars: int = 400) -> str:
     return truncate_text(text, max_lines=max_lines, max_chars=max_chars)
+
+MESSAGE_PURPOSE_CLARIFICATION = "clarification"
+MESSAGE_PURPOSE_CANNOT_FINISH = "cannot_finish"
+
 
 def run_agent_turn(
     messages: List[Dict[str, str]],
@@ -163,7 +107,6 @@ def run_agent_turn(
     read_only: bool,
     allowed_tools: Sequence[str],
     plugin_tools: Dict[str, PluginTool],
-    task_manager: TaskListManager,
     show_stats: bool,
     debug_logger: Optional[DebugLogger] = None,
     runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
@@ -176,10 +119,9 @@ def run_agent_turn(
     produces a terminal step (typically `end`) or it becomes clear we cannot safely proceed.
 
     Key invariants:
-    - Governance gating: when tasks are incomplete, user-visible `progress`/`final` messages are
-      withheld. The JSON protocol turn is still appended to `messages` so the model has continuity.
-    - Withheld-message rule: if a user-visible message was withheld, the model must re-send that
-      message after tasks are complete; ending without re-sending is blocked.
+    - Headless mode forbids asking the human user for clarification; the model must either proceed
+      autonomously or emit purpose='cannot_finish' before ending.
+    - Think-only turns are disallowed: the model must follow up with a tool_call or message/end step.
 
     Returns `(next_turn, last_stats, ended)` where `ended` indicates the conversation may stop.
     """
@@ -188,10 +130,7 @@ def run_agent_turn(
     last_stats: Optional[LLMCallStats] = None
     current_turn = turn
     invalid_replies = 0
-    gate_violations = 0
     think_only_turns = 0
-    pending_withheld_message: Optional[str] = None
-    need_user_update = False
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
@@ -201,12 +140,6 @@ def run_agent_turn(
 
     while True:
         headless_run = bool(runtime_context.headless) if runtime_context else False
-        _upsert_governance_notice(
-            messages,
-            task_manager,
-            gate_violations,
-            headless=headless_run,
-        )
         pinned_ids = memory_state.pinned_message_ids if memory_state else set()
         last_user_message = memory_state.last_user_message if memory_state else None
         attempt_retry = False
@@ -265,15 +198,6 @@ def run_agent_turn(
                 print(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{assistant_reply}\n")
                 messages.append({"role": "assistant", "content": assistant_reply})
                 return current_turn + 1, last_stats, False
-            rendered = task_manager.render_tasks()
-            next_json = (
-                '{"type":"assistant_turn","version":"2","steps":['
-                '{"type":"add_task","args":{"task":"list files in the repo (ls .)"}},'
-                '{"type":"add_task","args":{"task":"inspect three different files (read ...)"}},'
-                '{"type":"add_task","args":{"task":"summarize findings and report"}},'
-                '{"type":"list_tasks"}'
-                "]}"
-            )
             _upsert_action_required(
                 messages,
                 (
@@ -281,9 +205,7 @@ def run_agent_turn(
                     f"The user asked: {last_user!r}.\n"
                     "Return ONLY a single JSON object matching the assistant protocol.\n"
                     "Do NOT return whitespace.\n\n"
-                    f"Current task list:\n{rendered}\n\n"
-                    "If you need to proceed, add tasks and list them (example JSON to copy):\n"
-                    f"{next_json}"
+                    "If you are unsure what to do next, emit a tool_call or a short progress message."
                 ),
             )
             current_turn += 1
@@ -358,23 +280,12 @@ def run_agent_turn(
             think_preview = _truncate_preview("\n\n".join(step.content for step in thinks), max_lines=3, max_chars=240)
             if think_preview:
                 print(f"{COLOR_DIM}(think preview)\n{think_preview}{COLOR_RESET}")
-        if user_messages and should_render_user_messages(task_manager, user_messages) and not headless_input_requested:
+        if user_messages and not headless_input_requested:
             combined = "\n\n".join(step.content for step in user_messages)
             print(f"{combined}\n")
-            # Once we have shown any message to the user, clear any previously withheld message requirement.
-            # (The model may rephrase; we mainly want to avoid it thinking the user saw withheld output.)
-            pending_withheld_message = None
-            need_user_update = False
         elif tool_call_payloads:
             tools = ", ".join(call.tool for call in tool_call_payloads)
             print(f"{COLOR_DIM}(requesting tool(s): {tools}){COLOR_RESET}\n")
-        elif user_messages and not headless_input_requested:
-            # Withhold user-visible content until tasks are complete (unless clarification/cannot_finish).
-            combined = "\n\n".join(step.content for step in user_messages)
-            pending_withheld_message = combined
-            need_user_update = True
-            preview = _truncate_preview(combined, max_lines=6, max_chars=600)
-            print(f"{COLOR_DIM}(withheld message until task list is complete; preview)\n{preview}{COLOR_RESET}\n")
         else:
             print()
 
@@ -390,19 +301,14 @@ def run_agent_turn(
                     "If you are truly blocked, send a message step with purpose='cannot_finish' describing what's missing, then end."
                 ),
             )
-            gate_violations += 1
             current_turn += 1
             continue
 
         if thinks and not user_messages and not tool_call_payloads and not has_end:
             think_only_turns += 1
-            rendered = task_manager.render_tasks()
             next_json = (
                 '{"type":"assistant_turn","version":"2","steps":['
-                '{"type":"add_task","args":{"task":"list files in the repo (ls .)"}},'
-                '{"type":"add_task","args":{"task":"inspect three different files (read ...)"}},'
-                '{"type":"add_task","args":{"task":"summarize findings and report"}},'
-                '{"type":"list_tasks"}'
+                '{"type":"tool_call","call":{"tool":"read","target":"README.md","args":"lines:1-40"}}'
                 "]}"
             )
             if think_only_turns > 3:
@@ -411,10 +317,8 @@ def run_agent_turn(
                     (
                         "You have emitted multiple think-only turns. This is not allowed.\n"
                         "Next, emit either tool_call steps or message/end steps.\n\n"
-                        f"Current task list:\n{rendered}\n\n"
                         "Return ONLY a single JSON object matching the assistant protocol.\n"
-                        "If you are unsure what to do next, add tasks and list them (example JSON to copy):\n"
-                        f"{next_json}"
+                        f"Example next action:\n{next_json}"
                     ),
                 )
             else:
@@ -422,10 +326,8 @@ def run_agent_turn(
                     messages,
                     (
                         "You produced only think steps. Continue immediately with the next action.\n\n"
-                        f"Current task list:\n{rendered}\n\n"
                         "Return ONLY a single JSON object matching the assistant protocol.\n"
-                        "Next, add tasks and list them (example JSON to copy):\n"
-                        f"{next_json}"
+                        f"Example next action:\n{next_json}"
                     ),
                 )
             current_turn += 1
@@ -449,7 +351,6 @@ def run_agent_turn(
                     plugin_tools=plugin_tools,
                     runtime_tools=runtime_tools,
                     runtime_context=runtime_context,
-                    task_manager=task_manager,
                     debug_logger=debug_logger,
                 )
                 tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
@@ -477,65 +378,13 @@ def run_agent_turn(
                 messages.append(tool_message)
                 if is_pinned and memory_state:
                     memory_state.pinned_message_ids.add(id(tool_message))
-                # The user hasn't necessarily seen the implications of this tool result yet.
-                need_user_update = True
                 current_turn += 1
             continue
 
         if has_end:
-            if not can_end_conversation(task_manager, user_messages):
-                gate_violations += 1
-                current_turn += 1
-                continue
-            if pending_withheld_message is not None or need_user_update:
-                if headless_run:
-                    if pending_withheld_message:
-                        print(f"{pending_withheld_message}\n")
-                    else:
-                        summary = last_tool_summary if last_tool_summary is not None else ""
-                        print(f"{summary or '(no additional output)'}\n")
-                    pending_withheld_message = None
-                    need_user_update = False
-                else:
-                    rendered = task_manager.render_tasks()
-                    preview = _truncate_preview(pending_withheld_message or "", max_lines=12, max_chars=900)
-                    extra = ""
-                    if pending_withheld_message:
-                        extra = f"\n\nWithheld message preview (resend or rephrase):\n{preview}"
-                    _upsert_action_required(
-                        messages,
-                        (
-                            "You emitted an end step, but the human user has not received a final visible summary of what happened.\n"
-                            "Do NOT end yet. Send a message step now (prefer purpose='final') summarizing results, then end.\n\n"
-                            f"Current task list:\n{rendered}"
-                            f"{extra}"
-                        ),
-                    )
-                    current_turn += 1
-                    continue
             return current_turn + 1, last_stats, True
 
-        if user_messages and has_incomplete_tasks(task_manager) and not should_render_user_messages(task_manager, user_messages):
-            combined = "\n\n".join(step.content for step in user_messages)
-            preview = _truncate_preview(combined, max_lines=12, max_chars=900)
-            rendered = task_manager.render_tasks()
-            _upsert_action_required(
-                messages,
-                (
-                    "Your previous message was NOT shown to the human user because the task list is incomplete.\n"
-                    "Do not assume the user saw it. First, complete the outstanding tasks using tool calls.\n"
-                    "After the task list is complete, resend the message to the user (prefer purpose='final').\n\n"
-                    f"Current task list:\n{rendered}\n\n"
-                    "Withheld message preview (for you to resend later):\n"
-                    f"{preview}"
-                ),
-            )
-            gate_violations += 1
-            current_turn += 1
-            continue
-
         return current_turn + 1, last_stats, False
-
 
 def run_loop(
     initial_prompt: Optional[str],
@@ -552,7 +401,6 @@ def run_loop(
     plugin_dirs: Optional[Sequence[Path]] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> None:
-    task_manager = TaskListManager()
     base = workdir.resolve()
     if debug_logger:
         debug_logger.log("debug.enabled", f"writing debug logs to {debug_logger.path}")
@@ -562,8 +410,6 @@ def run_loop(
         )
 
     notes = gather_context(base)
-    # Ensure an active task list exists (may be empty).
-    task_manager.new_list()
 
     extra_roots: List[Path] = []
     skill_roots: List[Path] = [base / "skills"]
@@ -595,12 +441,10 @@ def run_loop(
         return f"{COLOR_GREEN}You [mode: {mode_label} | {stats}]:{COLOR_RESET} "
 
     user_prompt = format_user_prompt()
-    initial_task_list_text = task_manager.render_tasks()
     messages: List[Dict[str, str]] = [
         build_system_message(
             base,
             notes,
-            initial_task_list=initial_task_list_text,
             read_only=read_only,
             yolo_enabled=yolo_enabled,
             allowed_tools=allowed_tools,
@@ -621,7 +465,6 @@ def run_loop(
         yolo_enabled=yolo_enabled,
         read_only=read_only,
         headless=headless,
-        task_manager=task_manager,
         debug_logger=debug_logger,
         memory_state=memory_state,
     )
@@ -647,7 +490,6 @@ def run_loop(
             plugin_tools=plugins,
             runtime_tools=runtime_tools,
             runtime_context=runtime_ctx,
-            task_manager=task_manager,
             debug_logger=debug_logger,
         )
         try:
@@ -740,7 +582,6 @@ def run_loop(
             plugin_tools=plugins,
             runtime_tools=runtime_tools,
             runtime_context=runtime_ctx,
-            task_manager=task_manager,
             show_stats=show_stats,
             debug_logger=debug_logger,
         )

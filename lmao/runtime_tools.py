@@ -8,7 +8,6 @@ from .debug_log import DebugLogger
 from .llm import LLMClient
 from .memory import MemoryState
 from .plugins import PluginTool
-from .task_list import TaskListManager
 
 RuntimeToolHandler = Callable[["RuntimeContext", str, Any, Optional[dict]], str]
 
@@ -37,7 +36,6 @@ class RuntimeContext:
     yolo_enabled: bool
     read_only: bool
     headless: bool = False
-    task_manager: Optional[TaskListManager] = None
     debug_logger: Optional[DebugLogger] = None
     memory_state: Optional[MemoryState] = None
 

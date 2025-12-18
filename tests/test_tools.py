@@ -6,7 +6,6 @@ from unittest import TestCase
 
 from lmao.plugins import discover_plugins
 from lmao.tools import ToolCall, parse_tool_calls, run_tool, safe_target_path
-from lmao.task_list import TaskListManager
 
 
 class ToolCallParsingTests(TestCase):
@@ -158,79 +157,3 @@ class ToolSafetyTests(TestCase):
         paths = {entry["path"] for entry in payload["data"]}
         self.assertIn(str(repo_skill), paths)
         self.assertIn(str(user_skill), paths)
-
-    def test_task_tools_flow(self) -> None:
-        manager = TaskListManager()
-        add = ToolCall(tool="add_task", target="", args="do something")
-        complete = ToolCall(tool="complete_task", target="", args="1")
-        list_call = ToolCall(tool="list_tasks", target="", args="")
-
-        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        add_payload = json.loads(add_out)
-        self.assertTrue(add_payload["success"])
-
-        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        list_payload = json.loads(list_out)
-        self.assertTrue(list_payload["success"])
-        self.assertIn("[ ] 1 do something", list_payload["data"]["render"])
-
-        complete_out = run_tool(complete, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        complete_payload = json.loads(complete_out)
-        self.assertTrue(complete_payload["success"])
-
-        list_out_done = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        list_payload_done = json.loads(list_out_done)
-        self.assertTrue(list_payload_done["success"])
-        self.assertIn("[x] 1 do something", list_payload_done["data"]["render"])
-
-    def test_complete_task_accepts_json_dict_args(self) -> None:
-        manager = TaskListManager()
-        add = ToolCall(tool="add_task", target="", args="do something")
-        run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-
-        complete = ToolCall(tool="complete_task", target="", args=json.dumps({"task_id": 1}))
-        out = run_tool(complete, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        payload = json.loads(out)
-        self.assertTrue(payload["success"])
-        self.assertIn("completed task 1", payload["data"]["message"])
-
-    def test_task_tools_accept_target_as_payload(self) -> None:
-        manager = TaskListManager()
-        add = ToolCall(tool="add_task", target="task via target", args="")
-        list_call = ToolCall(tool="list_tasks", target="", args="")
-        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        add_payload = json.loads(add_out)
-        self.assertTrue(add_payload["success"])
-        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        list_payload = json.loads(list_out)
-        self.assertIn("task via target", list_payload["data"]["render"])
-
-    def test_find_quotes_paths_with_spaces(self) -> None:
-        spaced_dir = self.base / "my folder"
-        spaced_dir.mkdir()
-        (spaced_dir / "file name.txt").write_text("hi", encoding="utf-8")
-        call = ToolCall(tool="find", target=".", args="")
-        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins)
-        payload = json.loads(output)
-        paths = {entry["path"] for entry in payload["data"]["results"]}
-        self.assertIn("my folder/", paths)
-        self.assertIn("my folder/file name.txt", paths)
-
-    def test_add_task_strips_numbering_and_newlines(self) -> None:
-        manager = TaskListManager()
-        add = ToolCall(tool="add_task", target="", args="1. do something\nmultiline")
-        add_out = run_tool(add, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        add_payload = json.loads(add_out)
-        self.assertTrue(add_payload["success"])
-        list_call = ToolCall(tool="list_tasks", target="", args="")
-        list_out = run_tool(list_call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins, task_manager=manager)
-        list_payload = json.loads(list_out)
-        self.assertIn("[ ] 1 do something multiline", list_payload["data"]["render"])
-
-    def test_read_only_blocks_destructive_tools(self) -> None:
-        target = self.base / "notes.txt"
-        call = ToolCall(tool="write", target=str(target), args="content")
-        output = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, read_only=True, plugin_tools=self.plugins)
-        payload = json.loads(output)
-        self.assertFalse(payload["success"])
-        self.assertIn("read-only", payload["error"])

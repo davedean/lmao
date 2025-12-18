@@ -8,7 +8,6 @@ from .context import build_tool_prompt
 from .llm import LLMCallResult, LLMClient, LLMCallStats
 from .plugins import PluginTool
 from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
-from .task_list import TaskListManager
 from .tool_dispatch import json_error, json_success, run_tool
 from .tool_parsing import ToolCall
 
@@ -110,7 +109,6 @@ def run_subagent_one_shot(
     read_only: bool,
     debug_logger=None,
 ) -> Tuple[SubAgentResult, Optional[LLMCallStats]]:
-    task_manager = TaskListManager()
     messages: List[Dict[str, str]] = [
         _subagent_system_prompt(allowed_tools=allowed_tools, plugin_tools=plugin_tools),
         _subagent_user_prompt(objective, context),
@@ -164,7 +162,6 @@ def run_subagent_one_shot(
                 plugin_tools=plugin_tools,
                 runtime_tools=None,
                 runtime_context=None,
-                task_manager=task_manager,
                 debug_logger=debug_logger,
             )
             messages.append({"role": "user", "content": f"LOOP: Tool result: {tool_result}"})

@@ -101,6 +101,7 @@ class LLMClient:
     temperature: float = 0.2
     top_p: Optional[float] = None
     max_tokens: Optional[int] = None
+    context_window_tokens: Optional[int] = None
     debug_logger: Optional[DebugLogger] = None
 
     def call(self, messages: List[Dict[str, str]]) -> LLMCallResult:

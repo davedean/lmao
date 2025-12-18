@@ -40,10 +40,12 @@ max_tool_chars = 250
 [lmstudio]
 endpoint = http://lm.example
 model = qwen3-4b-test
+context_window_tokens = 12345
 
 [openrouter]
 endpoint = https://or.example/api
 model = openrouter/model
+context_window_tokens = 23456
 http_referer = https://referer.example
 app_title = Example Title
 api_key_env = CUSTOM_API_KEY
@@ -73,9 +75,11 @@ log_path = /tmp/lmao-debug.log
         self.assertEqual(250, cfg.max_tool_chars)
         self.assertEqual("http://lm.example", cfg.lmstudio_endpoint)
         self.assertEqual("qwen3-4b-test", cfg.lmstudio_model)
+        self.assertEqual(12345, cfg.lmstudio_context_window_tokens)
         self.assertEqual("/tmp/lmao-debug.log", cfg.debug_log_path)
         self.assertEqual("https://or.example/api", cfg.openrouter_endpoint)
         self.assertEqual("openrouter/model", cfg.openrouter_model)
+        self.assertEqual(23456, cfg.openrouter_context_window_tokens)
         self.assertEqual("https://referer.example", cfg.openrouter_http_referer)
         self.assertEqual("Example Title", cfg.openrouter_app_title)
         self.assertIsNone(cfg.openrouter_api_key)

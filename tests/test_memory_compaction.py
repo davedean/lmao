@@ -88,3 +88,37 @@ class MemoryCompactionTests(TestCase):
         )
 
         self.assertEqual(messages, [system, pinned_tool, user_message])
+
+    def test_compaction_preserves_latest_tool_result(self) -> None:
+        system = {"role": "system", "content": "sys"}
+        pinned_tool = {
+            "role": "user",
+            "content": "Tool result for tool 'read_agents' on 'AGENTS.md':\n...",
+        }
+        user_message = {"role": "user", "content": "use the list tool"}
+        assistant_call = {
+            "role": "assistant",
+            "content": '{"type":"assistant_turn","version":"2","steps":[{"type":"tool_call","call":{"tool":"list_skills","target":"","args":{}}}]}',
+        }
+        latest_tool_result = {
+            "role": "user",
+            "content": "Tool result for tool 'list_skills' on '':\n{\"tool\":\"list_skills\",\"success\":true,\"data\":[]}",
+        }
+        messages = [system, pinned_tool, user_message, assistant_call, latest_tool_result]
+        state = MemoryState()
+        state.last_user_message = user_message
+        state.pinned_message_ids.add(id(pinned_tool))
+
+        compact_messages_if_needed(
+            messages,
+            last_user_message=state.last_user_message,
+            pinned_message_ids=state.pinned_message_ids,
+            trigger_tokens=1,
+            target_tokens=1,
+            debug_logger=None,
+        )
+
+        self.assertEqual(messages[0], system)
+        self.assertIn(user_message, messages)
+        self.assertIn(pinned_tool, messages)
+        self.assertIn(latest_tool_result, messages)

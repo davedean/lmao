@@ -405,6 +405,15 @@ def main() -> None:
         temperature=temperature,
         top_p=top_p,
         max_tokens=max_tokens,
+        context_window_tokens=(
+            config.lmstudio_context_window_tokens
+            if provider_name == "lmstudio"
+            else (
+                config.openrouter_context_window_tokens
+                if provider_name == "openrouter"
+                else None
+            )
+        ),
         debug_logger=debug_logger,
     )
 

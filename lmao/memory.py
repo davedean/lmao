@@ -114,7 +114,8 @@ def truncate_tool_result_for_prompt(
 def determine_prompt_budget(client: LLMClient) -> Tuple[int, int, int]:
     """Compute max prompt tokens, and the trigger/target thresholds."""
     provider = getattr(client, "provider", "lmstudio")
-    context_window = _context_window_for_provider(provider)
+    override = getattr(client, "context_window_tokens", None)
+    context_window = _context_window_for_provider(provider, override=override)
     reserved = _reserved_completion_tokens(client, context_window)
     max_prompt = context_window - reserved
     min_prompt = max(int(context_window * 0.25), MIN_PROMPT_TOKENS)
@@ -125,7 +126,9 @@ def determine_prompt_budget(client: LLMClient) -> Tuple[int, int, int]:
     return max_prompt, trigger, target
 
 
-def _context_window_for_provider(provider: ProviderName) -> int:
+def _context_window_for_provider(provider: ProviderName, *, override: Optional[int] = None) -> int:
+    if isinstance(override, int) and override > 0:
+        return override
     return DEFAULT_CONTEXT_WINDOW_TOKENS.get(provider, DEFAULT_CONTEXT_WINDOW_TOKENS["lmstudio"])
 
 
@@ -181,6 +184,7 @@ def _next_droppable_index(
 ) -> Optional[int]:
     if len(messages) <= 1:
         return None
+    last_tool_result_idx: Optional[int] = None
     for idx, message in enumerate(messages):
         if idx == 0:
             continue
@@ -189,6 +193,19 @@ def _next_droppable_index(
         if last_user_message is not None and message is last_user_message:
             continue
         if _is_tool_result_message(message):
+            last_tool_result_idx = idx
+    for idx, message in enumerate(messages):
+        if idx == 0:
+            continue
+        if id(message) in pinned_message_ids:
+            continue
+        if last_user_message is not None and message is last_user_message:
+            continue
+        if _is_tool_result_message(message):
+            # Keep the most recent (droppable) tool result message so the model can
+            # react to it; otherwise it may re-run the same tool in a loop.
+            if last_tool_result_idx is not None and idx == last_tool_result_idx:
+                continue
             return idx
     for idx, message in enumerate(messages):
         if idx == 0:
@@ -196,6 +213,8 @@ def _next_droppable_index(
         if id(message) in pinned_message_ids:
             continue
         if last_user_message is not None and message is last_user_message:
+            continue
+        if last_tool_result_idx is not None and idx == last_tool_result_idx:
             continue
         return idx
     return None

@@ -28,8 +28,10 @@ class UserConfig:
     max_tokens: Optional[int] = None
     lmstudio_endpoint: Optional[str] = None
     lmstudio_model: Optional[str] = None
+    lmstudio_context_window_tokens: Optional[int] = None
     openrouter_endpoint: Optional[str] = None
     openrouter_model: Optional[str] = None
+    openrouter_context_window_tokens: Optional[int] = None
     openrouter_http_referer: Optional[str] = None
     openrouter_app_title: Optional[str] = None
     openrouter_api_key: Optional[str] = None
@@ -68,10 +70,12 @@ workdir =
 [lmstudio]
 endpoint = http://localhost:1234/v1/chat/completions
 model = qwen3-4b-instruct
+context_window_tokens =
 
 [openrouter]
 endpoint = https://openrouter.ai/api/v1/chat/completions
 model =
+context_window_tokens =
 http_referer =
 app_title =
 ; API key can be set directly or via env var (api_key takes precedence)
@@ -251,8 +255,12 @@ def load_user_config(path: Path) -> ConfigLoadResult:
             max_tool_chars=_read_int(parser, "tool_output", "max_tool_chars"),
             lmstudio_endpoint=_read_string(parser, "lmstudio", "endpoint"),
             lmstudio_model=_read_string(parser, "lmstudio", "model"),
+            lmstudio_context_window_tokens=_read_int(parser, "lmstudio", "context_window_tokens"),
             openrouter_endpoint=_read_string(parser, "openrouter", "endpoint"),
             openrouter_model=_read_string(parser, "openrouter", "model"),
+            openrouter_context_window_tokens=_read_int(
+                parser, "openrouter", "context_window_tokens"
+            ),
             openrouter_http_referer=_read_string(parser, "openrouter", "http_referer"),
             openrouter_app_title=_read_string(parser, "openrouter", "app_title"),
             openrouter_api_key=_read_string(parser, "openrouter", "api_key"),

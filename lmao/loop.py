@@ -403,7 +403,7 @@ def run_agent_turn(
                 is_pinned = should_pin_agents_tool_result(tool_call.tool, tool_call.target or "")
                 tool_result_content = (
                     f"Tool result for {tool_desc}:\n{output}\n"
-                    "Use this to continue. If another tool is needed, call it; otherwise reply to the user now."
+                    "Use this to continue. If another tool is needed, call it; otherwise continue to the next step."
                 )
                 truncated_content, _ = truncate_tool_result_for_prompt(
                     tool_result_content,

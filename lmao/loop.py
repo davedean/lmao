@@ -37,9 +37,6 @@ COLOR_GREEN = "\033[92m"
 COLOR_DIM = "\033[2m"
 COLOR_RESET = "\033[0m"
 
-MAX_TOOL_CALLS_PER_TURN = 6
-MAX_DESTRUCTIVE_TOOL_CALLS_PER_TURN = 1
-
 GOVERNANCE_NOTICE_PREFIX = "GOVERNANCE_NOTICE:"
 ACTION_REQUIRED_PREFIX = "ACTION_REQUIRED:"
 LOOP_PREFIX = "LOOP:"
@@ -434,41 +431,6 @@ def run_agent_turn(
             continue
 
         if tool_call_payloads:
-            if len(tool_call_payloads) > MAX_TOOL_CALLS_PER_TURN:
-                calls_preview = ", ".join(call.tool for call in tool_call_payloads[:MAX_TOOL_CALLS_PER_TURN])
-                _upsert_action_required(
-                    messages,
-                    (
-                        f"Too many tool calls in one reply ({len(tool_call_payloads)}). Limit is {MAX_TOOL_CALLS_PER_TURN}.\n"
-                        "Split the work across multiple assistant_turn replies.\n"
-                        f"First {MAX_TOOL_CALLS_PER_TURN} tools requested: {calls_preview}\n"
-                        "Return ONLY a single JSON object matching the assistant protocol."
-                    ),
-                )
-                current_turn += 1
-                continue
-
-            destructive = 0
-            for call in tool_call_payloads:
-                plugin = plugin_tools.get(call.tool)
-                if plugin is None:
-                    destructive += 1
-                elif plugin.is_destructive:
-                    destructive += 1
-            if destructive > MAX_DESTRUCTIVE_TOOL_CALLS_PER_TURN:
-                tools_list = ", ".join(call.tool for call in tool_call_payloads)
-                _upsert_action_required(
-                    messages,
-                    (
-                        f"Too many destructive tool calls in one reply ({destructive}). Limit is {MAX_DESTRUCTIVE_TOOL_CALLS_PER_TURN}.\n"
-                        "Split destructive actions across multiple replies.\n"
-                        f"Tools requested: {tools_list}\n"
-                        "Return ONLY a single JSON object matching the assistant protocol."
-                    ),
-                )
-                current_turn += 1
-                continue
-
             for call in tool_call_payloads:
                 tool_call = ToolCall(tool=call.tool, target=call.target, args=call.args, meta=call.meta)
                 if debug_logger:

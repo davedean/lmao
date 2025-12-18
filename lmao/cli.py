@@ -185,6 +185,8 @@ def _config_summary(
     api_key_present: bool,
     openrouter_free_default_model: Optional[str],
     openrouter_free_blacklist: tuple[str, ...],
+    policy_truncate: bool,
+    policy_truncate_chars: int,
 ) -> str:
     endpoint, model = provider_settings
     summary = {
@@ -214,6 +216,8 @@ def _config_summary(
         "openrouter_api_key_present": api_key_present,
         "openrouter_free_default_model": openrouter_free_default_model,
         "openrouter_free_blacklist": list(openrouter_free_blacklist),
+        "policy_truncate": policy_truncate,
+        "policy_truncate_chars": policy_truncate_chars,
     }
     return json.dumps(summary, ensure_ascii=False, indent=2)
 
@@ -283,6 +287,11 @@ def main() -> None:
     silent_tools = args.silent_tools or bool(config.silent_tools)
     no_stats = args.no_stats or bool(config.no_stats)
     multiline = args.multiline or bool(config.multiline)
+
+    policy_truncate = config.policy_truncate if config.policy_truncate is not None else True
+    policy_truncate_chars = config.policy_truncate_chars if config.policy_truncate_chars is not None else 2000
+    if policy_truncate_chars <= 0:
+        policy_truncate_chars = 2000
 
     mode_value = args.mode or config.mode or "normal"
     mode = mode_value.lower()
@@ -389,6 +398,8 @@ def main() -> None:
                 api_key_present=bool(api_key),
                 openrouter_free_default_model=config.openrouter_free_default_model,
                 openrouter_free_blacklist=config.openrouter_free_blacklist,
+                policy_truncate=policy_truncate,
+                policy_truncate_chars=policy_truncate_chars,
             )
         )
         return
@@ -439,6 +450,8 @@ def main() -> None:
             multiline=multiline,
             plugin_dirs=[built_in_plugins_dir],
             debug_logger=debug_logger,
+            policy_truncate=policy_truncate,
+            policy_truncate_chars=policy_truncate_chars,
         )
     except KeyboardInterrupt:
         print("\nInterrupted by user", file=sys.stderr)

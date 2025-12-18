@@ -40,6 +40,8 @@ class UserConfig:
     openrouter_free_blacklist: tuple[str, ...] = ()
     workdir: Optional[str] = None
     debug_log_path: Optional[str] = None
+    policy_truncate: Optional[bool] = None
+    policy_truncate_chars: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,12 @@ silent_tools = false
 no_stats = false
 max_turns =
 workdir =
+
+[policy]
+; Startup `policy` tool call behavior (AGENTS.md excerpt in the initial prompt).
+; When truncate=false, the full AGENTS.md is included (may bloat the prompt).
+truncate = true
+truncate_chars = 2000
 
 [lmstudio]
 endpoint = http://localhost:1234/v1/chat/completions
@@ -272,6 +280,8 @@ def load_user_config(path: Path) -> ConfigLoadResult:
                 parser, "openrouter", "free_blacklist"
             ),
             debug_log_path=_read_string(parser, "debug", "log_path"),
+            policy_truncate=_read_bool(parser, "policy", "truncate"),
+            policy_truncate_chars=_read_int(parser, "policy", "truncate_chars"),
         )
     except ValueError as exc:
         return ConfigLoadResult(

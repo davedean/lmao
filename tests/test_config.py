@@ -28,6 +28,10 @@ no_stats = true
 max_turns = 5
 workdir = ~/code
 
+[policy]
+truncate = false
+truncate_chars = 9000
+
 [generation]
 temperature = 0.7
 top_p = 0.9
@@ -86,6 +90,8 @@ log_path = /tmp/lmao-debug.log
         self.assertEqual("CUSTOM_API_KEY", cfg.openrouter_api_key_env)
         self.assertEqual("openai/gpt-4o-mini", cfg.openrouter_free_default_model)
         self.assertEqual(("gpt-free-1", "gpt-free-2"), cfg.openrouter_free_blacklist)
+        self.assertFalse(cfg.policy_truncate)
+        self.assertEqual(9000, cfg.policy_truncate_chars)
 
     def test_resolve_provider_settings_precedence(self) -> None:
         env = {

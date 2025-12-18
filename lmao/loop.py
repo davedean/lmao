@@ -435,6 +435,8 @@ def run_loop(
     multiline: bool = False,
     plugin_dirs: Optional[Sequence[Path]] = None,
     debug_logger: Optional[DebugLogger] = None,
+    policy_truncate: bool = True,
+    policy_truncate_chars: int = 2000,
 ) -> None:
     base = workdir.resolve()
     if debug_logger:
@@ -529,7 +531,15 @@ def run_loop(
             if debug_logger:
                 debug_logger.log("startup.prelude.skip", f"tool_not_allowed={tool_name}")
             return
-        tool_call = ToolCall(tool=tool_name, target="", args="", meta=None)
+        tool_args: object = ""
+        if tool_name == "policy":
+            tool_args = {"truncate": bool(policy_truncate)}
+            if policy_truncate:
+                limit = int(policy_truncate_chars)
+                if limit <= 0:
+                    limit = 2000
+                tool_args = {"truncate": True, "offset": 0, "limit": limit}
+        tool_call = ToolCall(tool=tool_name, target="", args=tool_args, meta=None)
         output = run_tool(
             tool_call,
             base,

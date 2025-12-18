@@ -43,6 +43,11 @@ no_stats = false
 max_turns =
 workdir =
 
+[policy]
+; Startup AGENTS.md excerpt in the initial prompt.
+truncate = true
+truncate_chars = 2000
+
 [lmstudio]
 endpoint = http://localhost:1234/v1/chat/completions
 model = qwen3-4b-instruct
@@ -70,7 +75,7 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 
 -## Behavior & Tools
 - Default tools: `read`, `write`, `mkdir`, `move`, `ls`, `find`, `grep`, `list_skills`. Git tools (`git_add`, `git_commit`) ship as plugins under `lmao/tools/git-*` and are available in normal/yolo modes (blocked in `--mode readonly`). Tool outputs are JSON (`success` + `data`/`error`) to keep paths with spaces unambiguous.
-- Repo instructions (AGENTS): the loop discovers the nearest `AGENTS.md` path but does not preload its contents; call `policy` if the model needs the repo instructions.
+- Repo instructions (AGENTS): the loop calls `policy` once at startup to include the nearest `AGENTS.md` excerpt; configure `[policy]` in `lmao.conf` or call `policy` with `offset`/`limit`/`truncate=false` for more.
 - Assistant protocol: the model must respond with a single JSON object each turn (`{"type":"assistant_turn","version":"1","steps":[...]}`), with step types `think`, `tool_call`, `message`, and `end`. The loop retries if the JSON is invalid.
 - Optional tool: `bash` ships as a plugin and prompts for confirmation on every command; it is available unless read-only mode is set.
 - Read-only mode: pass `--mode readonly` (or legacy `--read-only`) to disable destructive tools (`write`, `mkdir`, `move`) and any plugin that opts out of read-only (git/bash by default) for inspection-only runs.

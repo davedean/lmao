@@ -16,11 +16,12 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "v2 args optional: {offset:int, limit:int}; returns an excerpt by default (2000 chars)",
+    "input_schema": "v2 args optional: {offset:int, limit:int, truncate:bool}; returns an excerpt by default (2000 chars)",
     "usage": [
         "{\"tool\":\"policy\",\"target\":\"\",\"args\":\"\"}",
         "{\"tool\":\"policy\",\"target\":\"\",\"args\":{}}",
         "{\"tool\":\"policy\",\"target\":\"\",\"args\":{\"offset\":0,\"limit\":2000}}",
+        "{\"tool\":\"policy\",\"target\":\"\",\"args\":{\"truncate\":false}}",
     ],
 }
 
@@ -48,13 +49,17 @@ def run(
     try:
         offset = 0
         limit = DEFAULT_EXCERPT_LIMIT
+        truncate = True
         if isinstance(args, dict):
             raw_offset = args.get("offset")
             raw_limit = args.get("limit")
+            raw_truncate = args.get("truncate")
             if raw_offset is not None:
                 offset = int(raw_offset)
             if raw_limit is not None:
                 limit = int(raw_limit)
+            if raw_truncate is not None:
+                truncate = bool(raw_truncate)
         if offset < 0:
             offset = 0
         if limit <= 0:
@@ -71,6 +76,9 @@ def run(
             return _error("refusing to read AGENTS.md outside repo root")
         content = nearest.read_text(encoding="utf-8")
         total_chars = len(content)
+        if not truncate:
+            offset = 0
+            limit = total_chars
         excerpt = content[offset : offset + limit]
         next_offset = offset + len(excerpt)
         has_more = next_offset < total_chars

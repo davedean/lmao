@@ -270,7 +270,7 @@ def build_system_message(
     content = (
         f"{tool_prompt}\n"
         "Startup: the runtime will call `policy` once before your first response and include the tool result.\n"
-        "Note: `policy` returns an excerpt by default; call it again with offset/limit to see more.\n"
+        "Note: `policy` returns an excerpt by default; call it again with offset/limit (or truncate=false) to see more.\n"
         "Call `skills_guide` only when the user asks about skills or requests skill creation/usage.\n"
     )
     if debug:

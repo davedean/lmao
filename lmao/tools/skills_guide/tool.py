@@ -7,7 +7,7 @@ from typing import Any, Optional, Sequence
 from lmao.plugins import PLUGIN_API_VERSION
 
 PLUGIN = {
-    "name": "skill_guide",
+    "name": "skills_guide",
     "description": "Return guidance on how skills are structured and when to consult/list them.",
     "api_version": PLUGIN_API_VERSION,
     "is_destructive": False,
@@ -17,8 +17,8 @@ PLUGIN = {
     "always_confirm": False,
     "input_schema": "none (v2 args ignored)",
     "usage": [
-        "{\"tool\":\"skill_guide\",\"target\":\"\",\"args\":\"\"}",
-        "{\"tool\":\"skill_guide\",\"target\":\"\",\"args\":{}}",
+        "{\"tool\":\"skills_guide\",\"target\":\"\",\"args\":\"\"}",
+        "{\"tool\":\"skills_guide\",\"target\":\"\",\"args\":{}}",
     ],
 }
 

@@ -36,7 +36,7 @@ def get_discovered_tool_registry() -> Dict[str, "PluginTool"]:
     """
     Read-only view of the most recently discovered plugin tool registry (name -> PluginTool).
 
-    This is intended for helper tools like `tool_help` that need access to tool metadata without
+    This is intended for helper tools like `tools_guide` that need access to tool metadata without
     requiring protocol changes or threading plugin registries through every handler signature.
     """
     return dict(_DISCOVERED_TOOL_REGISTRY)

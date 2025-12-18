@@ -8,20 +8,23 @@ from lmao.plugins import PLUGIN_API_VERSION
 from lmao.context import find_nearest_agents, find_repo_root
 
 PLUGIN = {
-    "name": "read_agents",
-    "description": "Read the nearest repo AGENTS.md (walking up to the repo root).",
+    "name": "policy",
+    "description": "Read the nearest repo policy file (AGENTS.md) with pagination.",
     "api_version": PLUGIN_API_VERSION,
     "is_destructive": False,
     "allow_in_read_only": True,
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "none (v2 args ignored)",
+    "input_schema": "v2 args optional: {offset:int, limit:int}; returns an excerpt by default (2000 chars)",
     "usage": [
-        "{\"tool\":\"read_agents\",\"target\":\"\",\"args\":\"\"}",
-        "{\"tool\":\"read_agents\",\"target\":\"\",\"args\":{}}",
+        "{\"tool\":\"policy\",\"target\":\"\",\"args\":\"\"}",
+        "{\"tool\":\"policy\",\"target\":\"\",\"args\":{}}",
+        "{\"tool\":\"policy\",\"target\":\"\",\"args\":{\"offset\":0,\"limit\":2000}}",
     ],
 }
+
+DEFAULT_EXCERPT_LIMIT = 2000
 
 
 def _success(data: dict) -> str:
@@ -43,6 +46,20 @@ def run(
     meta: Optional[dict] = None,
 ) -> str:
     try:
+        offset = 0
+        limit = DEFAULT_EXCERPT_LIMIT
+        if isinstance(args, dict):
+            raw_offset = args.get("offset")
+            raw_limit = args.get("limit")
+            if raw_offset is not None:
+                offset = int(raw_offset)
+            if raw_limit is not None:
+                limit = int(raw_limit)
+        if offset < 0:
+            offset = 0
+        if limit <= 0:
+            limit = DEFAULT_EXCERPT_LIMIT
+
         repo_root = find_repo_root(base)
         nearest = find_nearest_agents(base, repo_root)
         if not nearest or not nearest.exists():
@@ -53,7 +70,20 @@ def run(
         except Exception:
             return _error("refusing to read AGENTS.md outside repo root")
         content = nearest.read_text(encoding="utf-8")
-        data = {"path": str(nearest), "content": content}
+        total_chars = len(content)
+        excerpt = content[offset : offset + limit]
+        next_offset = offset + len(excerpt)
+        has_more = next_offset < total_chars
+        data = {
+            "path": str(nearest),
+            "offset": offset,
+            "limit": limit,
+            "total_chars": total_chars,
+            "has_more": has_more,
+            "next_offset": next_offset if has_more else None,
+            "content": excerpt,
+            "content_truncated": has_more,
+        }
         return _success(data)
     except Exception as exc:
         return _error(f"unable to read AGENTS.md: {exc}")

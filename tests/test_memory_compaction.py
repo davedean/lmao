@@ -36,7 +36,7 @@ class MemoryCompactionTests(TestCase):
         pinned, pinned_flag = truncate_tool_result_for_prompt(payload, is_pinned=True)
         self.assertEqual(pinned, payload)
         self.assertFalse(pinned_flag)
-        self.assertTrue(should_pin_agents_tool_result("read_agents", ""))
+        self.assertTrue(should_pin_agents_tool_result("policy", ""))
 
     def test_compaction_keeps_system_user_and_pinned_results(self) -> None:
         system = {"role": "system", "content": "sys"}
@@ -72,7 +72,7 @@ class MemoryCompactionTests(TestCase):
         user_message = {"role": "user", "content": "follow-up"}
         pinned_tool = {
             "role": "user",
-            "content": "Tool result for tool 'read_agents' on 'AGENTS.md':\n...",
+            "content": "Tool result for tool 'policy' on 'AGENTS.md':\n...",
         }
         other = {"role": "assistant", "content": "old"}
         messages = [system, user_message, pinned_tool, other]
@@ -93,7 +93,7 @@ class MemoryCompactionTests(TestCase):
         system = {"role": "system", "content": "sys"}
         pinned_tool = {
             "role": "user",
-            "content": "Tool result for tool 'read_agents' on 'AGENTS.md':\n...",
+            "content": "Tool result for tool 'policy' on 'AGENTS.md':\n...",
         }
         user_message = {"role": "user", "content": "use the list tool"}
         assistant_call = {

@@ -360,14 +360,15 @@ class BuiltinPluginTests(TestCase):
             "ls",
             "find",
             "grep",
-            "read_agents",
+            "policy",
             "list_skills",
             "git_add",
             "git_commit",
             "git_status",
             "git_diff",
             "bash",
-            "tool_help",
+            "tools_guide",
+            "tools_list",
         }
         self.assertTrue(core_names.issubset(self.plugins.keys()))
 

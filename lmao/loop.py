@@ -296,7 +296,8 @@ def run_agent_turn(
 
         # Preserve protocol conversation history for the model by storing the JSON turn without think steps.
         sanitized_reply = sanitize_assistant_reply(assistant_reply, allowed_tools)
-        messages.append({"role": "assistant", "content": sanitized_reply})
+        if turn_obj.steps:
+            messages.append({"role": "assistant", "content": sanitized_reply})
         if headless_input_requested:
             _upsert_action_required(
                 messages,
@@ -402,8 +403,7 @@ def run_agent_turn(
                 is_pinned = should_pin_agents_tool_result(tool_call.tool, tool_call.target or "")
                 tool_result_content = (
                     f"Tool result for {tool_desc}:\n{output}\n"
-                    f"Use this to continue helping the user (request: {last_user!r}). "
-                    "If another tool is needed, call it; otherwise reply to the user now."
+                    "Use this to continue. If another tool is needed, call it; otherwise reply to the user now."
                 )
                 truncated_content, _ = truncate_tool_result_for_prompt(
                     tool_result_content,
@@ -486,6 +486,7 @@ def run_loop(
             plugins=list(plugins.values()),
             runtime_tools=list(runtime_tools.values()),
             headless=headless,
+            debug=debug_logger is not None,
         )
     ]
     user_input = initial_prompt
@@ -504,6 +505,20 @@ def run_loop(
         memory_state=memory_state,
     )
     startup_prelude_done = False
+    startup_user_input: Optional[str] = None
+
+    def _should_include_skills_guide_startup(prompt: str) -> bool:
+        lowered = (prompt or "").lower()
+        triggers = (
+            "skill",
+            "skills",
+            "skill.md",
+            "creating a skill",
+            "create a skill",
+            "write a skill",
+            "list skills",
+        )
+        return any(trigger in lowered for trigger in triggers)
 
     def _append_startup_tool_result(tool_name: str, *, last_user: str) -> None:
         if tool_name not in plugins:
@@ -539,11 +554,11 @@ def run_loop(
 
         tool_desc = f"tool '{tool_name}' on ''"
         is_pinned = should_pin_agents_tool_result(tool_name, "")
-        pin_for_memory = is_pinned or tool_name == "skill_guide"
+        pin_for_memory = is_pinned or tool_name == "skills_guide"
         tool_result_content = (
             f"Tool result for {tool_desc}:\n{output}\n"
             "Startup prelude: treat these instructions as authoritative for this run.\n"
-            f"Use this to continue helping the user (request: {last_user!r})."
+            "Use this to continue."
         )
         truncated_content, _ = truncate_tool_result_for_prompt(tool_result_content, is_pinned=is_pinned)
         tool_message = {"role": "user", "content": truncated_content}
@@ -591,10 +606,12 @@ def run_loop(
 
         if root_request is None:
             root_request = user_input
+            startup_user_input = user_input
 
         if not startup_prelude_done:
-            _append_startup_tool_result("read_agents", last_user=user_input)
-            _append_startup_tool_result("skill_guide", last_user=user_input)
+            _append_startup_tool_result("policy", last_user=user_input)
+            if startup_user_input and _should_include_skills_guide_startup(startup_user_input):
+                _append_startup_tool_result("skills_guide", last_user=user_input)
             startup_prelude_done = True
 
         user_message = {"role": "user", "content": user_input}

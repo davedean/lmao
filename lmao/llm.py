@@ -32,6 +32,46 @@ def estimate_message_tokens(messages: List[Dict[str, str]]) -> int:
     return total
 
 
+def _preview_text(text: str, *, max_chars: int = 120) -> str:
+    if not text:
+        return ""
+    cleaned = text.replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = cleaned.replace("\n", "\\n")
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max_chars - 3] + "..."
+
+
+def _summarize_messages_for_debug(messages: List[Dict[str, str]], *, top_n: int = 5) -> Dict[str, Any]:
+    per_message: List[Dict[str, Any]] = []
+    total_content_chars = 0
+    total_content_bytes = 0
+    for idx, message in enumerate(messages):
+        role = str(message.get("role", ""))
+        content = str(message.get("content", ""))
+        content_chars = len(content)
+        content_bytes = len(content.encode("utf-8", errors="replace"))
+        total_content_chars += content_chars
+        total_content_bytes += content_bytes
+        per_message.append(
+            {
+                "index": idx,
+                "role": role,
+                "content_chars": content_chars,
+                "content_bytes": content_bytes,
+                "preview": _preview_text(content, max_chars=120),
+            }
+        )
+    per_message.sort(key=lambda item: (item["content_chars"], item["content_bytes"]), reverse=True)
+    largest = per_message[: max(top_n, 0)]
+    return {
+        "message_count": len(messages),
+        "total_content_chars": total_content_chars,
+        "total_content_bytes": total_content_bytes,
+        "largest_messages": largest,
+    }
+
+
 def _parse_chat_completion(body: str) -> Tuple[str, Optional[Dict[str, Any]]]:
     parsed = json.loads(body)
     choices = parsed.get("choices")
@@ -126,6 +166,21 @@ class LLMClient:
         req = urllib.request.Request(self.endpoint, data=data, headers=headers)
 
         if self.debug_logger:
+            summary = _summarize_messages_for_debug(messages, top_n=5)
+            self.debug_logger.log(
+                "llm.request_stats",
+                (
+                    f"messages={summary['message_count']} "
+                    f"content_chars={summary['total_content_chars']} "
+                    f"content_bytes={summary['total_content_bytes']} "
+                    f"payload_bytes={len(data)} "
+                    f"prompt_tokens_est={prompt_tokens_est}"
+                ),
+            )
+            self.debug_logger.log(
+                "llm.request_largest_messages",
+                json.dumps(summary["largest_messages"], ensure_ascii=False),
+            )
             self.debug_logger.log("llm.request", json.dumps(payload, ensure_ascii=False))
 
         start = time.perf_counter()

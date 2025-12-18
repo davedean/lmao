@@ -57,6 +57,8 @@ def _format_tool_catalog(
     allowed_tools: Sequence[str],
     plugins: Optional[Sequence[PluginTool]],
     runtime_tools: Optional[Sequence[RuntimeTool]] = None,
+    *,
+    include_usage: bool = False,
 ) -> str:
     if not allowed_tools:
         return "(no tools discovered)"
@@ -72,18 +74,20 @@ def _format_tool_catalog(
         tool = by_name.get(name)
         if tool is not None:
             lines.append(f"- {tool.name}: {tool.description}")
-            for ex in (tool.usage_examples or [])[:3]:
-                wrapped = _wrap_tool_payload_usage_example_as_assistant_turn(ex)
-                if wrapped:
-                    lines.append(f"  usage: {wrapped}")
+            if include_usage:
+                for ex in (tool.usage_examples or [])[:3]:
+                    wrapped = _wrap_tool_payload_usage_example_as_assistant_turn(ex)
+                    if wrapped:
+                        lines.append(f"  usage: {wrapped}")
             continue
         rt_tool = rt_by_name.get(name)
         if rt_tool is not None:
             lines.append(f"- {rt_tool.name}: {rt_tool.description}")
-            for ex in (list(rt_tool.usage_examples) or [])[:2]:
-                wrapped = _wrap_tool_payload_usage_example_as_assistant_turn(ex)
-                if wrapped:
-                    lines.append(f"  usage: {wrapped}")
+            if include_usage:
+                for ex in (list(rt_tool.usage_examples) or [])[:2]:
+                    wrapped = _wrap_tool_payload_usage_example_as_assistant_turn(ex)
+                    if wrapped:
+                        lines.append(f"  usage: {wrapped}")
             continue
         lines.append(f"- {name}")
     return "\n".join(lines)
@@ -98,7 +102,7 @@ def build_tool_prompt(
     headless: bool = False,
 ) -> str:
     resolved = list(allowed_tools)
-    tool_catalog = _format_tool_catalog(resolved, plugins, runtime_tools=runtime_tools)
+    tool_catalog = _format_tool_catalog(resolved, plugins, runtime_tools=runtime_tools, include_usage=False)
     tool_call_examples: List[str] = []
     if resolved:
         example_tool = _pick_example_tool(resolved)
@@ -115,7 +119,7 @@ def build_tool_prompt(
         tool_call_examples = [
             f"Tool call example (v1): {json.dumps(tool_call_v1, ensure_ascii=False)}",
             f"Tool call example (v2): {json.dumps(tool_call_v2, ensure_ascii=False)}",
-            "Note: tool 'usage' examples below are full assistant_turn objects; copy them verbatim.",
+            "If you are unsure how to call a tool or what args it accepts, call tools_guide (or tools_list to discover tools).",
         ]
     prompt_lines = [
         "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
@@ -132,7 +136,7 @@ def build_tool_prompt(
         "Available tools (including plugins):",
         tool_catalog,
         "Paths are relative to the working directory; do not escape with .. or absolute paths.",
-        "Skills: only discuss/list skills when the user asks; call list_skills only on explicit user request (or if a requested skill needs a path); call skill_guide for skill format/rules.",
+        "Skills: only discuss/list skills when the user asks; call list_skills only on explicit user request (or if a requested skill needs a path); call skills_guide for skill format/rules.",
     ]
     prompt = "\n".join(prompt_lines)
 
@@ -253,6 +257,7 @@ def build_system_message(
     plugins: Optional[Sequence[PluginTool]] = None,
     runtime_tools: Optional[Sequence[RuntimeTool]] = None,
     headless: bool = False,
+    debug: bool = False,
 ) -> Dict[str, str]:
     tool_prompt = build_tool_prompt(
         list(allowed_tools),
@@ -264,20 +269,29 @@ def build_system_message(
     )
     content = (
         f"{tool_prompt}\n"
-        f"Working directory: {workdir}\n"
-        f"All tool paths are relative to this directory.\n"
-        f"Repo root: {notes.repo_root}\n"
-        f"Nearest AGENTS.md: {notes.nearest_agents if notes.nearest_agents else 'none'}\n"
-        "Startup: the runtime will attempt to call `read_agents` and `skill_guide` once before your first response and include the tool results.\n"
+        "Startup: the runtime will call `policy` once before your first response and include the tool result.\n"
+        "Note: `policy` returns an excerpt by default; call it again with offset/limit to see more.\n"
+        "Call `skills_guide` only when the user asks about skills or requests skill creation/usage.\n"
     )
-    if notes.discovered_skills:
-        skills_lines = "\n".join(f"- {name} (path: {path})" for name, path in notes.discovered_skills)
-        content = f"{content}\nSkills discovered at start (no tool call):\n{skills_lines}"
-    else:
-        content = f"{content}\nSkills discovered at start: none found."
+    if debug:
+        content = (
+            f"{content}"
+            f"Working directory: {workdir}\n"
+            f"All tool paths are relative to this directory.\n"
+            f"Repo root: {notes.repo_root}\n"
+            f"Nearest AGENTS.md: {notes.nearest_agents if notes.nearest_agents else 'none'}\n"
+        )
+        if notes.discovered_skills:
+            skills_lines = "\n".join(f"- {name}" for name, _path in notes.discovered_skills)
+            content = f"{content}\nSkills discovered at start (no tool call):\n{skills_lines}"
+        else:
+            content = f"{content}\nSkills discovered at start: none found."
 
-    if notes.user_skills:
-        content = f"{content}\n\nUser skills directory: {notes.user_skills}\nYou may read/find/ls within this path alongside repo skills."
+        if notes.user_skills:
+            content = (
+                f"{content}\n\nUser skills directory: {notes.user_skills}\n"
+                "You may read/find/ls within this path alongside repo skills."
+            )
 
     # Note: repo/user notes are intentionally not embedded in the system prompt to reduce context size.
 

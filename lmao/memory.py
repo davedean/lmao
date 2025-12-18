@@ -83,7 +83,7 @@ def _step_to_dict(step: Step) -> Dict[str, Any]:
 
 def should_pin_agents_tool_result(tool: str, target: str) -> bool:
     """AGENTS instructions should remain visible to the model."""
-    if tool == "read_agents":
+    if tool == "policy":
         return True
     if tool == "read":
         try:

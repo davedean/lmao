@@ -105,7 +105,8 @@ def build_tool_prompt(
     if headless:
         prompt = (
             f"{prompt}\nHeadless mode is active: the user cannot respond during the run. "
-            "Do NOT send clarification requests; if you need more information, send a message with purpose='cannot_finish' and end."
+            "Do NOT ask questions or request confirmation. If information is missing, make reasonable assumptions, state them briefly, and proceed. "
+            "Only if you truly cannot proceed safely, send a message with purpose='cannot_finish' describing what's missing, then end."
         )
     return prompt
 

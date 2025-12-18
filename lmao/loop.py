@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
 from .governance import (
     MESSAGE_PURPOSE_CLARIFICATION,
+    MESSAGE_PURPOSE_CANNOT_FINISH,
     can_end_conversation,
     has_incomplete_tasks,
     should_render_user_messages,
@@ -31,6 +33,42 @@ MAX_DESTRUCTIVE_TOOL_CALLS_PER_TURN = 1
 GOVERNANCE_NOTICE_PREFIX = "GOVERNANCE_NOTICE:"
 ACTION_REQUIRED_PREFIX = "ACTION_REQUIRED:"
 LOOP_PREFIX = "LOOP:"
+
+_HEADLESS_INPUT_REQUEST_PATTERNS = (
+    "would you like",
+    "do you want",
+    "can you",
+    "could you",
+    "please provide",
+    "please share",
+    "please confirm",
+    "please clarify",
+    "which one",
+    "which should",
+    "what should i",
+    "should i",
+    "let me know",
+    "tell me",
+    "need more info",
+    "need more information",
+    "what is your",
+    "what are your",
+)
+
+
+def _headless_requests_user_input(messages: Sequence[str]) -> bool:
+    for content in messages:
+        text = (content or "").strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if any(pat in lowered for pat in _HEADLESS_INPUT_REQUEST_PATTERNS):
+            return True
+        if "?" in lowered:
+            # Question marks alone are too noisy; require at least one "request" indicator.
+            if re.search(r"\b(you|your|please|which|what|confirm|clarif|provide|choose)\b", lowered):
+                return True
+    return False
 
 
 def _remove_prefixed_messages(messages: List[Dict[str, str]], prefix: str) -> None:
@@ -92,8 +130,9 @@ def _upsert_governance_notice(
     if headless:
         content = (
             f"{content}\n"
-            "Headless reminder: the user cannot respond after the initial prompt, so do not send clarification requests. "
-            "If you need more information, send a message step with purpose 'cannot_finish', then end."
+            "Headless reminder: the user cannot respond after the initial prompt, so do not ask questions or request confirmation. "
+            "Proceed autonomously: choose reasonable defaults, state assumptions briefly, and continue. "
+            "Only if you truly cannot proceed, send a message step with purpose 'cannot_finish', then end."
         )
     # Same Qwen3 caveat: send as a user-role instruction with a clear prefix.
     _remove_prefixed_messages(messages, GOVERNANCE_NOTICE_PREFIX)
@@ -250,9 +289,18 @@ def run_agent_turn(
         label_color = COLOR_BLUE
         thinks, user_messages, has_end = collect_steps(turn_obj.steps)
         tool_call_payloads = collect_tool_calls(turn_obj.steps)
-        clarification_requested = (
-            headless_run
-            and any(msg.purpose == MESSAGE_PURPOSE_CLARIFICATION for msg in user_messages)
+        explicit_clarification_requested = any(
+            msg.purpose == MESSAGE_PURPOSE_CLARIFICATION for msg in user_messages
+        )
+        headless_input_requested = headless_run and (
+            explicit_clarification_requested
+            or _headless_requests_user_input(
+                [
+                    msg.content
+                    for msg in user_messages
+                    if msg.purpose != MESSAGE_PURPOSE_CANNOT_FINISH
+                ]
+            )
         )
 
         if debug_logger:
@@ -260,15 +308,15 @@ def run_agent_turn(
             print(f"{COLOR_DIM}[protocol] ok steps={step_summary}{COLOR_RESET}")
 
         print(f"\n{label_color}[assistant #{current_turn}]{COLOR_RESET}")
-        if clarification_requested:
+        if headless_input_requested:
             print(
-                f"{COLOR_DIM}(clarification requests are disallowed in headless mode; please emit purpose='cannot_finish' and end){COLOR_RESET}"
+                f"{COLOR_DIM}(requests for user input are disallowed in headless mode; proceed autonomously or emit purpose='cannot_finish' and end){COLOR_RESET}"
             )
         if thinks:
             think_preview = _truncate_preview("\n\n".join(step.content for step in thinks), max_lines=3, max_chars=240)
             if think_preview:
                 print(f"{COLOR_DIM}(think preview)\n{think_preview}{COLOR_RESET}")
-        if user_messages and should_render_user_messages(task_manager, user_messages) and not clarification_requested:
+        if user_messages and should_render_user_messages(task_manager, user_messages) and not headless_input_requested:
             combined = "\n\n".join(step.content for step in user_messages)
             print(f"{combined}\n")
             # Once we have shown any message to the user, clear any previously withheld message requirement.
@@ -278,7 +326,7 @@ def run_agent_turn(
         elif tool_call_payloads:
             tools = ", ".join(call.tool for call in tool_call_payloads)
             print(f"{COLOR_DIM}(requesting tool(s): {tools}){COLOR_RESET}\n")
-        elif user_messages and not clarification_requested:
+        elif user_messages and not headless_input_requested:
             # Withhold user-visible content until tasks are complete (unless clarification/cannot_finish).
             combined = "\n\n".join(step.content for step in user_messages)
             pending_withheld_message = combined
@@ -290,12 +338,13 @@ def run_agent_turn(
 
         # Preserve protocol conversation history for the model by storing the JSON turn verbatim.
         messages.append({"role": "assistant", "content": assistant_reply})
-        if clarification_requested:
+        if headless_input_requested:
             _upsert_action_required(
                 messages,
                 (
-                    "Headless mode is active: the human user cannot respond, so do NOT issue clarification requests."
-                    " If you need more information, send a message step with purpose 'cannot_finish' and end."
+                    "Headless mode is active: the human user cannot respond, so do NOT ask questions or request confirmation.\n"
+                    "Proceed autonomously: pick reasonable defaults, state assumptions briefly, and continue (call tools if helpful).\n"
+                    "If you are truly blocked, send a message step with purpose='cannot_finish' describing what's missing, then end."
                 ),
             )
             gate_violations += 1
@@ -641,6 +690,7 @@ def run_loop(
                 "If you can proceed, take the next action now (call tools as needed).\n"
                 "If you are finished, send a final summary message AND include an explicit end step.\n"
                 "Important: a message step with purpose='final' does NOT stop the run; only an end step stops it.\n"
+                "Do not ask questions or request confirmation; proceed autonomously using reasonable defaults.\n"
                 "If you are blocked and cannot proceed safely, send purpose='cannot_finish' and then end.\n"
                 "Example finish JSON: "
                 "{\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":["

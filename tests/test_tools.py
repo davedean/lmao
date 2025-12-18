@@ -122,6 +122,13 @@ class ToolSafetyTests(TestCase):
         self.assertFalse(payload["success"])
         self.assertIn("skills/<skill-name>", payload["error"])
 
+    def test_write_requires_non_empty_target(self) -> None:
+        call = ToolCall(tool="write", target="", args="demo")
+        result = run_tool(call, base=self.base, extra_roots=[], skill_roots=[], yolo_enabled=False, plugin_tools=self.plugins)
+        payload = json.loads(result)
+        self.assertFalse(payload["success"])
+        self.assertIn("missing target", payload["error"])
+
     def test_move_blocks_top_level_skill_file(self) -> None:
         skills_root = self.base / "skills"
         skills_root.mkdir()

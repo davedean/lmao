@@ -63,8 +63,12 @@ def run(
     debug_logger: Optional[object] = None,
     meta: Optional[dict] = None,
 ) -> str:
+    if not str(target or "").strip():
+        return _error(
+            "missing target file path; set target to a relative file path like 'notes.txt' (mkdir is for directories)"
+        )
     try:
-        target_path = safe_target_path(target or ".", base, extra_roots)
+        target_path = safe_target_path(target, base, extra_roots)
     except Exception:
         return _error(f"target path '{target}' escapes working directory")
 

@@ -32,4 +32,3 @@ Examples:
 - Patch plugin (`lmao/tools/patch`) updates a line range in an existing file without rewriting the entire file content.
 - Git plugins (`lmao/tools/git-add`, `lmao/tools/git-commit`) allow normal/yolo, block read-only.
 - A hypothetical delete plugin could set `allow_in_normal=False`, `allow_in_yolo=True`, and `always_confirm=True` to prompt before executing.
-- Matterbridge helpers (`matterbridge_send`, `matterbridge_read`) live in dedicated folders and expect a configured Matterbridge URI/gateway. `matterbridge_send` posts a message (supports username/avatar/extra overrides and per-call gateway overrides) while `matterbridge_read` can either drain the buffered `/api/messages` endpoint or stream newline-delimited JSON from `/api/stream` (skipping `api_connected` events and reporting `truncated` when limited).

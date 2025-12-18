@@ -32,8 +32,6 @@ Per-user defaults can live in `${XDG_CONFIG_HOME:-~/.config}/agents/lmao.conf` (
 
 The INI-style file holds repeatable preferences such as provider endpoints, sampling parameters, loop limits, and tool-output truncation. Store OpenRouter metadata here too (referer/title) but keep secrets in the environment; you can name the env var that holds the API key with `api_key_env` instead of storing the key itself. When the automatic free-model selector is enabled, you can also keep lightweight preferences here—`free_default_model` is tried before ranking, and `free_blacklist` lists comma- or newline-separated model IDs that should never be picked automatically.
 
-Additional `[matterbridge]` settings configure the Matterbridge tools; set `uri` to the base gateway URL and `gateway` to the default gateway name unless you want to override them per-call via `gateway` in the tool args.
-
 Example `lmao.conf`:
 ```ini
 [core]
@@ -79,7 +77,6 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Pluggable tools: shipped plugins under `lmao/tools` are loaded automatically (see `lmao/tools/demo-plugin/tool.py` for a minimal echo example). Additional plugin directories are not yet supported via CLI.
 - Path safety: all tool paths are constrained to the working directory. User skill folders under `~/.config/agents/skills` are also allowed when present.
 - Task lists: each run starts with an active list (empty by default). If the model adds tasks, it is expected to keep the list in sync while it works instead of pausing for confirmation.
-- Matterbridge tools: `matterbridge_send` and `matterbridge_read` talk to a configured Matterbridge gateway (`MATTERBRIDGE_URI`/`--matterbridge-uri`/`[matterbridge].uri`). Send posts outbound messages (username/avatar/extra/gateway overrides permitted) while read can drain `/api/messages` or stream `/api/stream` until a limit or timeout is reached. These endpoints may expose sensitive local services, so guard the base URI accordingly.
 - Headless mode: `--headless` (or `headless = true` in `lmao.conf`) runs without interactive prompts. Provide a prompt via the positional argument, `--prompt-file`, or `default_prompt` in the config; the loop enforces that the agent skips clarification requests and emits a final summary before ending.
 
 ## Skills & AGENTS
@@ -104,12 +101,10 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Headless runtime: `--headless` keeps the loop from prompting; pair it with an explicit prompt (or `default_prompt` in `lmao.conf`) so the agent can finish without clarification requests.
 - Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory (override the destination with `[debug]` `log_path`, relative paths are resolved under the working directory)
 - Config: `--config PATH`, `--no-config`, `--print-config` (print the resolved defaults without secrets), `--config-init` (write the default config if missing)
-- Matterbridge: `--matterbridge-uri` and `--matterbridge-gateway` override `[matterbridge]`/`MATTERBRIDGE_*` defaults for the send/read tools.
 
 Environment defaults:
 - LM Studio: `LM_STUDIO_URL`, `LM_STUDIO_MODEL`
 - OpenRouter: `OPENROUTER_API_KEY` (required); `OPENROUTER_MODEL` can be a concrete ID or `free`, plus optional `OPENROUTER_HTTP_REFERER`, `OPENROUTER_APP_TITLE`
-- Matterbridge: `MATTERBRIDGE_URI`, `MATTERBRIDGE_GATEWAY`
 
 ## Safety Notes
 - Git and bash plugins are available by default but blocked in `--read-only`; they still require a git repo. Bash always asks for confirmation; other plugins can opt in with `always_confirm`.

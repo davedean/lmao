@@ -37,8 +37,6 @@ class UserConfig:
     openrouter_free_default_model: Optional[str] = None
     openrouter_free_blacklist: tuple[str, ...] = ()
     workdir: Optional[str] = None
-    matterbridge_uri: Optional[str] = None
-    matterbridge_gateway: Optional[str] = None
     debug_log_path: Optional[str] = None
 
 
@@ -90,11 +88,6 @@ max_tokens =
 [tool_output]
 max_tool_lines = 8
 max_tool_chars = 400
-
-[matterbridge]
-# CLI flag > config > env
-uri =
-gateway =
 
 [debug]
 log_path =
@@ -270,8 +263,6 @@ def load_user_config(path: Path) -> ConfigLoadResult:
             openrouter_free_blacklist=_read_list(
                 parser, "openrouter", "free_blacklist"
             ),
-            matterbridge_uri=_read_string(parser, "matterbridge", "uri"),
-            matterbridge_gateway=_read_string(parser, "matterbridge", "gateway"),
             debug_log_path=_read_string(parser, "debug", "log_path"),
         )
     except ValueError as exc:

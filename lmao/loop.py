@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -624,6 +625,56 @@ def run_loop(
         debug_logger=debug_logger,
         memory_state=memory_state,
     )
+    startup_prelude_done = False
+
+    def _append_startup_tool_result(tool_name: str, *, last_user: str) -> None:
+        if tool_name not in plugins:
+            if debug_logger:
+                debug_logger.log("startup.prelude.skip", f"missing_tool={tool_name}")
+            return
+        if tool_name not in allowed_tools:
+            if debug_logger:
+                debug_logger.log("startup.prelude.skip", f"tool_not_allowed={tool_name}")
+            return
+        tool_call = ToolCall(tool=tool_name, target="", args="", meta=None)
+        output = run_tool(
+            tool_call,
+            base,
+            extra_roots,
+            skill_roots,
+            yolo_enabled,
+            read_only=read_only,
+            plugin_tools=plugins,
+            runtime_tools=runtime_tools,
+            runtime_context=runtime_ctx,
+            task_manager=task_manager,
+            debug_logger=debug_logger,
+        )
+        try:
+            payload = json.loads(output)
+            success = bool(payload.get("success"))
+        except Exception:
+            success = True
+        if not success:
+            if debug_logger:
+                debug_logger.log("startup.prelude.tool_error", f"tool={tool_name} output={output}")
+            return
+
+        tool_desc = f"tool '{tool_name}' on ''"
+        is_pinned = should_pin_agents_tool_result(tool_name, "")
+        pin_for_memory = is_pinned or tool_name == "skill_guide"
+        tool_result_content = (
+            f"Tool result for {tool_desc}:\n{output}\n"
+            "Startup prelude: treat these instructions as authoritative for this run.\n"
+            f"Use this to continue helping the user (request: {last_user!r})."
+        )
+        truncated_content, _ = truncate_tool_result_for_prompt(tool_result_content, is_pinned=is_pinned)
+        tool_message = {"role": "user", "content": truncated_content}
+        messages.append(tool_message)
+        if pin_for_memory:
+            memory_state.pinned_message_ids.add(id(tool_message))
+        if debug_logger:
+            debug_logger.log("startup.prelude.tool", f"tool={tool_name} pinned={pin_for_memory}")
 
     if debug_logger and initial_prompt is not None:
         debug_logger.log("user.initial_prompt", initial_prompt)
@@ -663,6 +714,11 @@ def run_loop(
 
         if root_request is None:
             root_request = user_input
+
+        if not startup_prelude_done:
+            _append_startup_tool_result("read_agents", last_user=user_input)
+            _append_startup_tool_result("skill_guide", last_user=user_input)
+            startup_prelude_done = True
 
         user_message = {"role": "user", "content": user_input}
         messages.append(user_message)

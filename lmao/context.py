@@ -226,7 +226,8 @@ def build_system_message(
         f"Working directory: {workdir}\n"
         f"All tool paths are relative to this directory.\n"
         f"Repo root: {notes.repo_root}\n"
-        f"Nearest AGENTS.md: {notes.nearest_agents if notes.nearest_agents else 'none'} (call read_agents to load it)\n"
+        f"Nearest AGENTS.md: {notes.nearest_agents if notes.nearest_agents else 'none'}\n"
+        "Startup: the runtime will attempt to call `read_agents` and `skill_guide` once before your first response and include the tool results.\n"
     )
     if notes.discovered_skills:
         skills_lines = "\n".join(f"- {name} (path: {path})" for name, path in notes.discovered_skills)

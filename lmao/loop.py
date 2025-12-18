@@ -131,6 +131,7 @@ def run_agent_turn(
     current_turn = turn
     invalid_replies = 0
     think_only_turns = 0
+    progress_only_turns = 0
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
@@ -256,6 +257,10 @@ def run_agent_turn(
         explicit_clarification_requested = any(
             msg.purpose == MESSAGE_PURPOSE_CLARIFICATION for msg in user_messages
         )
+        implicit_input_requested = _headless_requests_user_input(
+            [msg.content for msg in user_messages if msg.purpose != MESSAGE_PURPOSE_CANNOT_FINISH]
+        )
+        input_requested = explicit_clarification_requested or implicit_input_requested
         headless_input_requested = headless_run and (
             explicit_clarification_requested
             or _headless_requests_user_input(
@@ -304,6 +309,35 @@ def run_agent_turn(
             current_turn += 1
             continue
 
+        if user_messages and not tool_call_payloads and not has_end and not input_requested:
+            progress_only_turns += 1
+            purposes = {msg.purpose for msg in user_messages}
+            needs_explicit_end = bool(purposes.intersection({"final", MESSAGE_PURPOSE_CANNOT_FINISH}))
+            if progress_only_turns >= 4:
+                reminder = (
+                    "You have emitted multiple message-only turns without taking an action. "
+                    "This is not allowed.\n"
+                )
+            else:
+                reminder = ""
+            if needs_explicit_end:
+                instruction = (
+                    f"{reminder}"
+                    "You sent a terminal message (purpose='final' or 'cannot_finish') but did not include an end step.\n"
+                    "Continue immediately by returning a new assistant_turn that includes an explicit end step.\n"
+                    "Return ONLY JSON; do not ask the user to type 'ok' or provide follow-ups."
+                )
+            else:
+                instruction = (
+                    f"{reminder}"
+                    "You sent a progress message but did not call any tools and did not end.\n"
+                    "Continue immediately without waiting for user input: either call a tool (tool_call steps) or, if finished, send purpose='final' AND an explicit end step.\n"
+                    "Do not ask the user to type 'ok' or otherwise prompt for input unless you truly need clarification (then set purpose='clarification')."
+                )
+            _upsert_action_required(messages, instruction)
+            current_turn += 1
+            continue
+
         if thinks and not user_messages and not tool_call_payloads and not has_end:
             think_only_turns += 1
             next_json = (
@@ -332,6 +366,7 @@ def run_agent_turn(
                 )
             current_turn += 1
             continue
+        progress_only_turns = 0
 
         if tool_call_payloads:
             for call in tool_call_payloads:

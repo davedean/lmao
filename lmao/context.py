@@ -3,27 +3,54 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from .plugins import PluginTool
 from .runtime_tools import RuntimeTool
 
-def _wrap_tool_call_usage_example(example: str) -> str:
-    """Return a tool_call step example from a bare tool payload example.
+def _wrap_tool_payload_usage_example_as_assistant_turn(example: str) -> Optional[str]:
+    """Return a full assistant_turn example from a bare tool payload example.
 
-    Most plugins provide usage examples shaped like {"tool":"...","target":"...","args":...}.
-    In the protocol, tool invocations must be wrapped in a tool_call step.
+    Most tools provide usage examples shaped like {"tool":"...","target":"...","args":...}.
+    In the protocol, tool invocations must be wrapped as a tool_call step inside an assistant_turn.
     """
     stripped = (example or "").strip()
     if not stripped:
-        return example
+        return None
     try:
         payload = json.loads(stripped)
     except Exception:
-        return example
+        return None
     if not isinstance(payload, dict) or "tool" not in payload:
-        return example
-    wrapped = {"type": "tool_call", "call": payload}
+        return None
+    wrapped = {"type": "assistant_turn", "version": "2", "steps": [{"type": "tool_call", "call": payload}]}
     return json.dumps(wrapped, ensure_ascii=False)
+
+
+def _example_call_v1(tool: str) -> Dict[str, Any]:
+    if tool == "read":
+        return {"tool": "read", "target": "README.md", "args": "lines:1-40"}
+    if tool == "grep":
+        return {"tool": "grep", "target": ".", "args": "matterbridge"}
+    return {"tool": tool, "target": ".", "args": ""}
+
+
+def _example_call_v2(tool: str) -> Dict[str, Any]:
+    if tool == "read":
+        return {"tool": "read", "target": "README.md", "args": {"lines": "1-40"}}
+    if tool == "grep":
+        return {"tool": "grep", "target": ".", "args": {"pattern": "matterbridge"}}
+    if tool == "ls":
+        return {"tool": "ls", "target": "", "args": {"path": "."}}
+    return {"tool": tool, "target": ".", "args": ""}
+
+
+def _pick_example_tool(allowed_tools: Sequence[str]) -> str:
+    preferred = ("ls", "read", "grep", "find")
+    allowed_set = set(allowed_tools)
+    for name in preferred:
+        if name in allowed_set:
+            return name
+    return allowed_tools[0]
 
 
 def _format_tool_catalog(
@@ -46,13 +73,17 @@ def _format_tool_catalog(
         if tool is not None:
             lines.append(f"- {tool.name}: {tool.description}")
             for ex in (tool.usage_examples or [])[:3]:
-                lines.append(f"  usage: {_wrap_tool_call_usage_example(ex)}")
+                wrapped = _wrap_tool_payload_usage_example_as_assistant_turn(ex)
+                if wrapped:
+                    lines.append(f"  usage: {wrapped}")
             continue
         rt_tool = rt_by_name.get(name)
         if rt_tool is not None:
             lines.append(f"- {rt_tool.name}: {rt_tool.description}")
             for ex in (list(rt_tool.usage_examples) or [])[:2]:
-                lines.append(f"  usage: {ex}")
+                wrapped = _wrap_tool_payload_usage_example_as_assistant_turn(ex)
+                if wrapped:
+                    lines.append(f"  usage: {wrapped}")
             continue
         lines.append(f"- {name}")
     return "\n".join(lines)
@@ -68,6 +99,24 @@ def build_tool_prompt(
 ) -> str:
     resolved = list(allowed_tools)
     tool_catalog = _format_tool_catalog(resolved, plugins, runtime_tools=runtime_tools)
+    tool_call_examples: List[str] = []
+    if resolved:
+        example_tool = _pick_example_tool(resolved)
+        tool_call_v1 = {
+            "type": "assistant_turn",
+            "version": "1",
+            "steps": [{"type": "tool_call", "call": _example_call_v1(example_tool)}],
+        }
+        tool_call_v2 = {
+            "type": "assistant_turn",
+            "version": "2",
+            "steps": [{"type": "tool_call", "call": {**_example_call_v2(example_tool), "meta": {"timeout_s": 10}}}],
+        }
+        tool_call_examples = [
+            f"Tool call example (v1): {json.dumps(tool_call_v1, ensure_ascii=False)}",
+            f"Tool call example (v2): {json.dumps(tool_call_v2, ensure_ascii=False)}",
+            "Note: tool 'usage' examples below are full assistant_turn objects; copy them verbatim.",
+        ]
     prompt_lines = [
         "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
         "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]}",
@@ -78,10 +127,7 @@ def build_tool_prompt(
         "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
         "Message purpose values: progress | clarification | cannot_finish | final (default: progress).",
         "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
-        "Tool calls (v1): {\"type\":\"tool_call\",\"call\":{\"tool\":\"read\",\"target\":\"README.md\",\"args\":\"lines:1-40\"}}",
-        "Tool calls (v2): {\"type\":\"tool_call\",\"call\":{\"tool\":\"async_bash\",\"target\":\"\",\"args\":{\"command\":\"sleep 20\"},\"meta\":{\"timeout_s\":10}}}",
-        "Note: tool 'usage' examples below are already wrapped as tool_call steps; copy them verbatim.",
-        "Example (valid JSON): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"tool_call\",\"call\":{\"tool\":\"ls\",\"target\":\"\",\"args\":\"\"}}]}",
+        *tool_call_examples,
         "Example (finish): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"message\",\"purpose\":\"final\",\"format\":\"markdown\",\"content\":\"...\"},{\"type\":\"end\",\"reason\":\"completed\"}]}",
         "Available tools (including plugins):",
         tool_catalog,

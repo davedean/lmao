@@ -183,6 +183,8 @@ def _config_summary(
     openrouter_referer: Optional[str],
     openrouter_title: Optional[str],
     api_key_present: bool,
+    openrouter_free_default_model: Optional[str],
+    openrouter_free_blacklist: tuple[str, ...],
 ) -> str:
     endpoint, model = provider_settings
     summary = {
@@ -210,6 +212,8 @@ def _config_summary(
         "openrouter_referer": openrouter_referer,
         "openrouter_title": openrouter_title,
         "openrouter_api_key_present": api_key_present,
+        "openrouter_free_default_model": openrouter_free_default_model,
+        "openrouter_free_blacklist": list(openrouter_free_blacklist),
     }
     return json.dumps(summary, ensure_ascii=False, indent=2)
 
@@ -383,6 +387,8 @@ def main() -> None:
                 openrouter_referer=openrouter_referer,
                 openrouter_title=openrouter_title,
                 api_key_present=bool(api_key),
+                openrouter_free_default_model=config.openrouter_free_default_model,
+                openrouter_free_blacklist=config.openrouter_free_blacklist,
             )
         )
         return

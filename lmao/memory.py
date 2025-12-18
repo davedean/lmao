@@ -18,7 +18,7 @@ from .protocol import (
 )
 
 TOOL_RESULT_PROMPT_PREFIX = "Tool result for "
-TRUNCATION_MARKER = "\n...[truncated; re-run the tool to fetch details]"
+TRUNCATION_MARKER = "\n...[truncated: output exceeded prompt limit; narrow the request for more detail]"
 MAX_TOOL_RESULT_PROMPT_CHARS = 20_000
 PROMPT_TRIGGER_RATIO = 0.7
 PROMPT_TARGET_RATIO = 0.6

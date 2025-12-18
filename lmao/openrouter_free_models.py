@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import json
 import random
 from dataclasses import dataclass
@@ -25,8 +26,27 @@ class OpenRouterFreeModelPreferences:
     default_model: Optional[str] = None
     blacklist: Sequence[str] = ()
 
-    def normalized_blacklist(self) -> set[str]:
-        return {entry.strip().lower() for entry in self.blacklist if entry and entry.strip()}
+    def is_blacklisted(self, model_id: str) -> bool:
+        normalized_id = model_id.strip().lower()
+        exact, patterns = self._normalized_blacklist()
+        if normalized_id in exact:
+            return True
+        return any(fnmatch.fnmatchcase(normalized_id, pattern) for pattern in patterns)
+
+    def _normalized_blacklist(self) -> tuple[set[str], tuple[str, ...]]:
+        exact: set[str] = set()
+        patterns: list[str] = []
+        for entry in self.blacklist:
+            if not entry:
+                continue
+            normalized = entry.strip().lower()
+            if not normalized:
+                continue
+            if any(char in normalized for char in "*?[]"):
+                patterns.append(normalized)
+            else:
+                exact.add(normalized)
+        return exact, tuple(patterns)
 
 
 @dataclass(frozen=True)
@@ -359,10 +379,7 @@ class OpenRouterFreeModelSelector:
 
     def select_model(self) -> OpenRouterModelCandidate:
         candidates = self._discovery.fetch_free_models()
-        blacklist = self._preferences.normalized_blacklist()
-        filtered = [
-            candidate for candidate in candidates if candidate.model_id.lower() not in blacklist
-        ]
+        filtered = [candidate for candidate in candidates if not self._preferences.is_blacklisted(candidate.model_id)]
         if not filtered:
             raise OpenRouterModelSelectionError("All free OpenRouter models are blacklisted.")
 

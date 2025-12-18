@@ -82,6 +82,26 @@ class OpenRouterFreeModelsTests(TestCase):
             chosen = selector.select_model()
         self.assertEqual("openrouter/free-b", chosen.model_id)
 
+    def test_selector_respects_blacklist_globs(self) -> None:
+        candidates = [
+            _build_candidate("allenai/olmo-3-32b-think:free", parameter_estimate=3_000_000_000),
+            _build_candidate("openrouter/free-ok:free", parameter_estimate=2_000_000_000),
+        ]
+        with patch.object(
+            OpenRouterFreeModelSelector, "_validate_candidate", return_value=(True, "")
+        ):
+            selector = OpenRouterFreeModelSelector(
+                discovery=_DummyDiscovery(candidates),
+                preferences=OpenRouterFreeModelPreferences(
+                    blacklist=("allenai/olmo-3*-32b-think:free",),
+                ),
+                completions_endpoint="https://openrouter.ai/api/v1/chat/completions",
+                api_key="secret",
+                rng=_NoShuffleRng(),
+            )
+            chosen = selector.select_model()
+        self.assertEqual("openrouter/free-ok:free", chosen.model_id)
+
     def test_selector_error_when_all_blacklisted(self) -> None:
         candidates = [_build_candidate("model-one")]
         selector = OpenRouterFreeModelSelector(

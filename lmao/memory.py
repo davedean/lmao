@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
@@ -156,8 +157,15 @@ def compact_messages_if_needed(
     """Drop older history until the estimated prompt tokens stay under budget."""
     if trigger_tokens <= 0 or target_tokens <= 0:
         return
+    start = time.perf_counter()
     current_tokens = estimate_message_tokens(messages)
     if current_tokens <= trigger_tokens:
+        if debug_logger:
+            elapsed_ms = (time.perf_counter() - start) * 1000.0
+            debug_logger.log(
+                "memory.compact.timing",
+                f"elapsed_ms={elapsed_ms:.2f} dropped=0 prompt_tokens={current_tokens} target={target_tokens}",
+            )
         return
     dropped = 0
     while current_tokens > target_tokens:
@@ -170,10 +178,16 @@ def compact_messages_if_needed(
             preview = _preview_text_for_log(removed.get("content"))
             debug_logger.log("memory.compact.drop", f"role={removed.get('role')} idx={idx} preview={preview}")
         current_tokens = estimate_message_tokens(messages)
-    if debug_logger and dropped:
+    if debug_logger:
+        elapsed_ms = (time.perf_counter() - start) * 1000.0
+        if dropped:
+            debug_logger.log(
+                "memory.compact",
+                f"dropped={dropped} prompt_tokens={current_tokens} target={target_tokens}",
+            )
         debug_logger.log(
-            "memory.compact",
-            f"dropped={dropped} prompt_tokens={current_tokens} target={target_tokens}",
+            "memory.compact.timing",
+            f"elapsed_ms={elapsed_ms:.2f} dropped={dropped} prompt_tokens={current_tokens} target={target_tokens}",
         )
 
 

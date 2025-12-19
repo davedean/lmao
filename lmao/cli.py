@@ -185,6 +185,8 @@ def _config_summary(
     api_key_present: bool,
     openrouter_free_default_model: Optional[str],
     openrouter_free_blacklist: tuple[str, ...],
+    openrouter_context_window_tokens: Optional[int],
+    lmstudio_context_window_tokens: Optional[int],
     policy_truncate: bool,
     policy_truncate_chars: int,
 ) -> str:
@@ -216,6 +218,8 @@ def _config_summary(
         "openrouter_api_key_present": api_key_present,
         "openrouter_free_default_model": openrouter_free_default_model,
         "openrouter_free_blacklist": list(openrouter_free_blacklist),
+        "openrouter_context_window_tokens": openrouter_context_window_tokens,
+        "lmstudio_context_window_tokens": lmstudio_context_window_tokens,
         "policy_truncate": policy_truncate,
         "policy_truncate_chars": policy_truncate_chars,
     }
@@ -398,6 +402,8 @@ def main() -> None:
                 api_key_present=bool(api_key),
                 openrouter_free_default_model=config.openrouter_free_default_model,
                 openrouter_free_blacklist=config.openrouter_free_blacklist,
+                openrouter_context_window_tokens=config.openrouter_context_window_tokens,
+                lmstudio_context_window_tokens=config.lmstudio_context_window_tokens,
                 policy_truncate=policy_truncate,
                 policy_truncate_chars=policy_truncate_chars,
             )

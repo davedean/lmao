@@ -31,6 +31,7 @@ class PluginTool:
     always_confirm: bool
     handler: Callable[..., str]
     path: Path
+    visible_to_agent: bool = True
 
 
 def get_discovered_tool_registry() -> Dict[str, "PluginTool"]:
@@ -77,6 +78,10 @@ def _validate_manifest(manifest: Dict[str, Any]) -> Optional[str]:
         manifest.get("always_confirm"), bool
     ):
         return "always_confirm must be a boolean when provided"
+    if manifest.get("visible_to_agent", None) is not None and not isinstance(
+        manifest.get("visible_to_agent"), bool
+    ):
+        return "visible_to_agent must be a boolean when provided"
     return None
 
 
@@ -142,6 +147,7 @@ def _create_plugin_tool(
         always_confirm=bool(manifest.get("always_confirm", False)),
         handler=handler,
         path=path,
+        visible_to_agent=bool(manifest.get("visible_to_agent", True)),
     )
 
 
@@ -360,7 +366,9 @@ def discover_plugin_hooks(
                     resolved.relative_to(base)
             except Exception:
                 if debug_logger:
-                    debug_logger.log("plugin.hook_skip", f"path_outside_base={plugin_path}")
+                    debug_logger.log(
+                        "plugin.hook_skip", f"path_outside_base={plugin_path}"
+                    )
                 continue
             module = _load_module(resolved)
             if module is None:

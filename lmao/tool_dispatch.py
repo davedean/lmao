@@ -29,7 +29,9 @@ def json_success(tool: str, data: Any, note: Optional[str] = None) -> str:
 
 
 def json_error(tool: str, message: str) -> str:
-    return json.dumps({"tool": tool, "success": False, "error": message}, ensure_ascii=False)
+    return json.dumps(
+        {"tool": tool, "success": False, "error": message}, ensure_ascii=False
+    )
 
 
 def get_allowed_tools(
@@ -38,8 +40,12 @@ def get_allowed_tools(
     if not plugins:
         return []
     if yolo_enabled and not read_only:
-        return [plugin.name for plugin in plugins]
-    return [plugin.name for plugin in plugins if plugin_allowed(plugin, read_only, yolo_enabled)]
+        return [plugin.name for plugin in plugins if plugin.visible_to_agent]
+    return [
+        plugin.name
+        for plugin in plugins
+        if plugin_allowed(plugin, read_only, yolo_enabled) and plugin.visible_to_agent
+    ]
 
 
 def plugin_allowed(plugin: PluginTool, read_only: bool, yolo_enabled: bool) -> bool:
@@ -48,6 +54,35 @@ def plugin_allowed(plugin: PluginTool, read_only: bool, yolo_enabled: bool) -> b
     if yolo_enabled:
         return True
     return plugin.allow_in_normal
+
+
+def runtime_tool_allowed_visibility(
+    runtime_tool: RuntimeTool, read_only: bool, yolo_enabled: bool
+) -> bool:
+    """Check if a runtime tool is allowed and visible to the agent."""
+    if not runtime_tool_visible_to_agent(runtime_tool):
+        return False
+    return runtime_tool_allowed(
+        runtime_tool, read_only=read_only, yolo_enabled=yolo_enabled
+    )
+
+
+def runtime_tool_visible_to_agent(runtime_tool: RuntimeTool) -> bool:
+    """Check if a runtime tool is visible to the agent."""
+    return runtime_tool.visible_to_agent
+
+
+def get_allowed_runtime_tools(
+    runtime_tools: Dict[str, RuntimeTool], read_only: bool, yolo_enabled: bool
+) -> List[str]:
+    """Get list of runtime tool names that are allowed and visible to the agent."""
+    return [
+        name
+        for name, tool in runtime_tools.items()
+        if runtime_tool_allowed_visibility(
+            tool, read_only=read_only, yolo_enabled=yolo_enabled
+        )
+    ]
 
 
 def _format_args_for_prompt(args: Any) -> str:
@@ -137,7 +172,9 @@ def run_tool(
         )
         if perm_result.modified_context:
             tool_context = perm_result.modified_context
-        tool_call, tool, target, args = _apply_tool_context_updates(tool_call, tool_context)
+        tool_call, tool, target, args = _apply_tool_context_updates(
+            tool_call, tool_context
+        )
         if perm_result.should_cancel:
             return json_error(tool, "tool execution cancelled by hook")
         if perm_result.should_skip:
@@ -151,7 +188,9 @@ def run_tool(
                 tool_context,
                 f"runtime tool '{tool}' is not allowed in {mode} mode",
             )
-            return json_error(tool, f"runtime tool '{tool}' is not allowed in {mode} mode")
+            return json_error(
+                tool, f"runtime tool '{tool}' is not allowed in {mode} mode"
+            )
         if rt.is_destructive and read_only:
             _emit_error_hook(
                 hook_registry,
@@ -159,7 +198,9 @@ def run_tool(
                 tool_context,
                 "runtime tool is destructive and not allowed in read-only mode",
             )
-            return json_error(tool, "runtime tool is destructive and not allowed in read-only mode")
+            return json_error(
+                tool, "runtime tool is destructive and not allowed in read-only mode"
+            )
         if runtime_context is None:
             _emit_error_hook(
                 hook_registry,
@@ -185,7 +226,9 @@ def run_tool(
             )
             if pre_exec.modified_context:
                 tool_context = pre_exec.modified_context
-            tool_call, tool, target, args = _apply_tool_context_updates(tool_call, tool_context)
+            tool_call, tool, target, args = _apply_tool_context_updates(
+                tool_call, tool_context
+            )
             if pre_exec.should_cancel:
                 return json_error(tool, "tool execution cancelled by hook")
             if pre_exec.should_skip:
@@ -237,7 +280,9 @@ def run_tool(
         _target_path = safe_target_path(target or ".", base, extra_roots)
     except Exception as exc:
         if debug_logger:
-            debug_logger.log("tool.error", f"tool={tool} target={target!r} path_escape_error={exc}")
+            debug_logger.log(
+                "tool.error", f"tool={tool} target={target!r} path_escape_error={exc}"
+            )
         _emit_error_hook(
             hook_registry,
             ErrorHookTypes.ON_TOOL_VALIDATION_ERROR,
@@ -291,7 +336,9 @@ def run_tool(
         )
         if pre_exec.modified_context:
             tool_context = pre_exec.modified_context
-        tool_call, tool, target, args = _apply_tool_context_updates(tool_call, tool_context)
+        tool_call, tool, target, args = _apply_tool_context_updates(
+            tool_call, tool_context
+        )
         if pre_exec.should_cancel:
             return json_error(tool, "tool execution cancelled by hook")
         if pre_exec.should_skip:
@@ -301,7 +348,9 @@ def run_tool(
         try:
             sig = inspect.signature(handler)
             params = list(sig.parameters.values())
-            accepts_varargs = any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in params)
+            accepts_varargs = any(
+                p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
+            )
             accepts_meta = accepts_varargs or len(params) >= 8
         except Exception:
             accepts_meta = False
@@ -354,7 +403,10 @@ def run_tool(
             ToolHookTypes.POST_RESULT_TRANSFORM,
             tool_context.with_hook_type(ToolHookTypes.POST_RESULT_TRANSFORM),
         )
-        if transform.modified_context and transform.modified_context.tool_result is not None:
+        if (
+            transform.modified_context
+            and transform.modified_context.tool_result is not None
+        ):
             result = transform.modified_context.tool_result
         hook_registry.execute_hooks(
             LoggingHookTypes.ON_TOOL_SUCCESS,
@@ -369,7 +421,9 @@ def run_tool(
         return result
     except Exception as exc:
         if debug_logger:
-            debug_logger.log("plugin.error", f"tool={tool} path={plugin.path} error={exc}")
+            debug_logger.log(
+                "plugin.error", f"tool={tool} path={plugin.path} error={exc}"
+            )
         _emit_error_hook(
             hook_registry,
             ErrorHookTypes.ON_TOOL_EXECUTION_ERROR,
@@ -407,7 +461,9 @@ def _apply_tool_context_updates(
         or target != tool_call.target
         or args is not tool_call.args
     ):
-        tool_call = ToolCall(tool=tool_name, target=target, args=args, meta=tool_call.meta)
+        tool_call = ToolCall(
+            tool=tool_name, target=target, args=args, meta=tool_call.meta
+        )
     return tool_call, tool_name, target, args
 
 

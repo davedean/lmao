@@ -108,6 +108,7 @@ def run_agent_turn(
     allowed_tools: Sequence[str],
     plugin_tools: Dict[str, PluginTool],
     show_stats: bool,
+    max_turns: Optional[int],
     debug_logger: Optional[DebugLogger] = None,
     runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
     runtime_context: Optional[RuntimeContext] = None,
@@ -140,6 +141,11 @@ def run_agent_turn(
     _, trigger_tokens, target_tokens = determine_prompt_budget(client)
 
     while True:
+        if max_turns is not None and current_turn > max_turns:
+            print(f"{COLOR_DIM}Reached max turns ({max_turns}); stopping.{COLOR_RESET}")
+            if debug_logger:
+                debug_logger.log("loop.stop", f"reason=max_turns reached={max_turns}")
+            return current_turn, last_stats, True
         headless_run = bool(runtime_context.headless) if runtime_context else False
         pinned_ids = memory_state.pinned_message_ids if memory_state else set()
         last_user_message = memory_state.last_user_message if memory_state else None
@@ -659,6 +665,7 @@ def run_loop(
             runtime_tools=runtime_tools,
             runtime_context=runtime_ctx,
             show_stats=show_stats,
+            max_turns=max_turns,
             debug_logger=debug_logger,
         )
         turn = next_turn

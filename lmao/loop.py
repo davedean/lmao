@@ -258,7 +258,11 @@ def run_agent_turn(
             msg.purpose == MESSAGE_PURPOSE_CLARIFICATION for msg in user_messages
         )
         implicit_input_requested = _headless_requests_user_input(
-            [msg.content for msg in user_messages if msg.purpose != MESSAGE_PURPOSE_CANNOT_FINISH]
+            [
+                msg.content
+                for msg in user_messages
+                if msg.purpose not in (MESSAGE_PURPOSE_CANNOT_FINISH, "final")
+            ]
         )
         input_requested = explicit_clarification_requested or implicit_input_requested
         headless_input_requested = headless_run and (
@@ -267,7 +271,7 @@ def run_agent_turn(
                 [
                     msg.content
                     for msg in user_messages
-                    if msg.purpose != MESSAGE_PURPOSE_CANNOT_FINISH
+                    if msg.purpose not in (MESSAGE_PURPOSE_CANNOT_FINISH, "final")
                 ]
             )
         )

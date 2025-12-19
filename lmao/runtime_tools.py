@@ -8,6 +8,7 @@ from .debug_log import DebugLogger
 from .llm import LLMClient
 from .memory import MemoryState
 from .plugins import PluginTool
+from .hooks import HookRegistry
 
 RuntimeToolHandler = Callable[["RuntimeContext", str, Any, Optional[dict]], str]
 
@@ -38,6 +39,7 @@ class RuntimeContext:
     headless: bool = False
     debug_logger: Optional[DebugLogger] = None
     memory_state: Optional[MemoryState] = None
+    hook_registry: Optional[HookRegistry] = None
 
 
 def runtime_tool_allowed(tool: RuntimeTool, *, read_only: bool, yolo_enabled: bool) -> bool:

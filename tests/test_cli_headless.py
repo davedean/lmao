@@ -1,3 +1,5 @@
+import contextlib
+import io
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -16,7 +18,9 @@ class CLIHeadlessTests(TestCase):
             "lmao.cli.load_user_config",
             return_value=config_result,
         ):
-            with self.assertRaises(SystemExit) as exc:
+            with self.assertRaises(SystemExit) as exc, contextlib.redirect_stderr(
+                io.StringIO()
+            ):
                 main()
             self.assertEqual(2, exc.exception.code)
         run_loop.assert_not_called()

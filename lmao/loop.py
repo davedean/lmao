@@ -8,9 +8,21 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
 from .llm import LLMCallStats, LLMClient
-from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
+from .hooks import (
+    AgentHookContext,
+    AgentHookTypes,
+    LoggingHookContext,
+    LoggingHookTypes,
+    get_global_hook_registry,
+)
+from .protocol import (
+    ProtocolError,
+    collect_steps,
+    collect_tool_calls,
+    parse_assistant_turn_with_hooks,
+)
 from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
-from .plugins import PluginTool, discover_plugins
+from .plugins import PluginTool, discover_plugin_hooks, discover_plugins
 from .text_utils import truncate_text
 from .memory import (
     MemoryState,
@@ -141,6 +153,11 @@ def run_agent_turn(
 
     while True:
         headless_run = bool(runtime_context.headless) if runtime_context else False
+        hook_registry = (
+            runtime_context.hook_registry
+            if runtime_context and runtime_context.hook_registry
+            else get_global_hook_registry()
+        )
         pinned_ids = memory_state.pinned_message_ids if memory_state else set()
         last_user_message = memory_state.last_user_message if memory_state else None
         attempt_retry = False
@@ -154,9 +171,55 @@ def run_agent_turn(
                 debug_logger=debug_logger,
             )
             try:
+                hook_registry.execute_hooks(
+                    LoggingHookTypes.ON_LLM_REQUEST,
+                    LoggingHookContext(
+                        hook_type=LoggingHookTypes.ON_LLM_REQUEST,
+                        runtime_state={"turn": current_turn},
+                        log_level="info",
+                        log_message="llm request",
+                        log_source="loop",
+                    ),
+                )
+                hook_registry.execute_hooks(
+                    AgentHookTypes.PRE_AGENT_THINK,
+                    AgentHookContext(
+                        hook_type=AgentHookTypes.PRE_AGENT_THINK,
+                        runtime_state={"turn": current_turn},
+                        agent_type="primary",
+                    ),
+                )
                 result = client.call(messages)
+                hook_registry.execute_hooks(
+                    LoggingHookTypes.ON_LLM_RESPONSE,
+                    LoggingHookContext(
+                        hook_type=LoggingHookTypes.ON_LLM_RESPONSE,
+                        runtime_state={"turn": current_turn},
+                        log_level="info",
+                        log_message="llm response",
+                        log_source="loop",
+                    ),
+                )
+                hook_registry.execute_hooks(
+                    AgentHookTypes.POST_AGENT_THINK,
+                    AgentHookContext(
+                        hook_type=AgentHookTypes.POST_AGENT_THINK,
+                        runtime_state={"turn": current_turn},
+                        agent_type="primary",
+                    ),
+                )
                 break
             except RuntimeError as exc:
+                hook_registry.execute_hooks(
+                    LoggingHookTypes.ON_LLM_ERROR,
+                    LoggingHookContext(
+                        hook_type=LoggingHookTypes.ON_LLM_ERROR,
+                        runtime_state={"turn": current_turn},
+                        log_level="error",
+                        log_message=str(exc),
+                        log_source="loop",
+                    ),
+                )
                 if not attempt_retry and is_context_length_error(str(exc)):
                     if memory_state:
                         aggressive_compact_messages(
@@ -217,7 +280,12 @@ def run_agent_turn(
             debug_logger.log("assistant.reply", f"turn={current_turn} content={assistant_reply}")
 
         try:
-            turn_obj = parse_assistant_turn(assistant_reply, allowed_tools=allowed_tools)
+            turn_obj = parse_assistant_turn_with_hooks(
+                assistant_reply,
+                allowed_tools=allowed_tools,
+                hook_registry=hook_registry,
+                runtime_state={"turn": current_turn},
+            )
         except ProtocolError as exc:
             invalid_replies += 1
             if debug_logger:
@@ -246,6 +314,16 @@ def run_agent_turn(
                 }
             )
             current_turn += 1
+            hook_registry.execute_hooks(
+                LoggingHookTypes.ON_AGENT_ERROR,
+                LoggingHookContext(
+                    hook_type=LoggingHookTypes.ON_AGENT_ERROR,
+                    runtime_state={"turn": current_turn},
+                    log_level="error",
+                    log_message=str(exc),
+                    log_source="loop",
+                ),
+            )
             continue
 
         # Recovery prompts are only for the immediate next attempt; remove them once we get a valid turn.
@@ -371,6 +449,15 @@ def run_agent_turn(
 
         if tool_call_payloads:
             for call in tool_call_payloads:
+                hook_registry.execute_hooks(
+                    AgentHookTypes.PRE_AGENT_ACTION,
+                    AgentHookContext(
+                        hook_type=AgentHookTypes.PRE_AGENT_ACTION,
+                        runtime_state={"turn": current_turn},
+                        agent_type="primary",
+                        current_task=last_user,
+                    ),
+                )
                 tool_call = ToolCall(tool=call.tool, target=call.target, args=call.args, meta=call.meta)
                 if debug_logger:
                     debug_logger.log(
@@ -414,6 +501,15 @@ def run_agent_turn(
                 if is_pinned and memory_state:
                     memory_state.pinned_message_ids.add(id(tool_message))
                 current_turn += 1
+                hook_registry.execute_hooks(
+                    AgentHookTypes.POST_AGENT_ACTION,
+                    AgentHookContext(
+                        hook_type=AgentHookTypes.POST_AGENT_ACTION,
+                        runtime_state={"turn": current_turn},
+                        agent_type="primary",
+                        current_task=last_user,
+                    ),
+                )
             continue
 
         if has_end:
@@ -439,6 +535,25 @@ def run_loop(
     policy_truncate_chars: int = 2000,
 ) -> None:
     base = workdir.resolve()
+    hook_registry = get_global_hook_registry()
+    hook_registry.execute_hooks(
+        LoggingHookTypes.ON_SYSTEM_STARTUP,
+        LoggingHookContext(
+            hook_type=LoggingHookTypes.ON_SYSTEM_STARTUP,
+            runtime_state={"workdir": str(base)},
+            log_level="info",
+            log_message="system startup",
+            log_source="loop",
+        ),
+    )
+    hook_registry.execute_hooks(
+        AgentHookTypes.AGENT_STARTUP,
+        AgentHookContext(
+            hook_type=AgentHookTypes.AGENT_STARTUP,
+            runtime_state={"workdir": str(base)},
+            agent_type="primary",
+        ),
+    )
     if debug_logger:
         debug_logger.log("debug.enabled", f"writing debug logs to {debug_logger.path}")
         debug_logger.log(
@@ -456,6 +571,13 @@ def run_loop(
         skill_roots.append(resolved_user_skills)
 
     plugins = discover_plugins(plugin_dirs or [], base, debug_logger=debug_logger, allow_outside_base=True)
+    discover_plugin_hooks(
+        plugin_dirs or [],
+        base,
+        hook_registry,
+        debug_logger=debug_logger,
+        allow_outside_base=True,
+    )
     if debug_logger and plugins:
         debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
     runtime_tools = build_runtime_tool_registry()
@@ -476,6 +598,42 @@ def run_loop(
             f"t={last_prompt_stats.elapsed_s:.2f}s"
         )
         return f"{COLOR_GREEN}You [mode: {mode_label} | {stats}]:{COLOR_RESET} "
+
+    shutdown_emitted = False
+
+    def _emit_shutdown() -> None:
+        nonlocal shutdown_emitted
+        if shutdown_emitted:
+            return
+        hook_registry.execute_hooks(
+            LoggingHookTypes.ON_SESSION_END,
+            LoggingHookContext(
+                hook_type=LoggingHookTypes.ON_SESSION_END,
+                runtime_state={"workdir": str(base)},
+                log_level="info",
+                log_message="session end",
+                log_source="loop",
+            ),
+        )
+        hook_registry.execute_hooks(
+            AgentHookTypes.AGENT_SHUTDOWN,
+            AgentHookContext(
+                hook_type=AgentHookTypes.AGENT_SHUTDOWN,
+                runtime_state={"workdir": str(base)},
+                agent_type="primary",
+            ),
+        )
+        hook_registry.execute_hooks(
+            LoggingHookTypes.ON_SYSTEM_SHUTDOWN,
+            LoggingHookContext(
+                hook_type=LoggingHookTypes.ON_SYSTEM_SHUTDOWN,
+                runtime_state={"workdir": str(base)},
+                log_level="info",
+                log_message="system shutdown",
+                log_source="loop",
+            ),
+        )
+        shutdown_emitted = True
 
     user_prompt = format_user_prompt()
     messages: List[Dict[str, str]] = [
@@ -505,6 +663,17 @@ def run_loop(
         headless=headless,
         debug_logger=debug_logger,
         memory_state=memory_state,
+        hook_registry=hook_registry,
+    )
+    hook_registry.execute_hooks(
+        LoggingHookTypes.ON_SESSION_START,
+        LoggingHookContext(
+            hook_type=LoggingHookTypes.ON_SESSION_START,
+            runtime_state={"workdir": str(base)},
+            log_level="info",
+            log_message="session start",
+            log_source="loop",
+        ),
     )
     startup_prelude_done = False
     startup_user_input: Optional[str] = None
@@ -583,9 +752,11 @@ def run_loop(
 
     if user_input is None:
         if headless:
+            _emit_shutdown()
             return
         result = read_user_prompt(user_prompt, multiline_default=multiline)
         if result.eof:
+            _emit_shutdown()
             return
         user_input = result.text or ""
         if debug_logger:
@@ -598,12 +769,15 @@ def run_loop(
             print(f"Reached max turns ({max_turns}); stopping.")
             if debug_logger:
                 debug_logger.log("loop.stop", f"reason=max_turns reached={max_turns}")
+            _emit_shutdown()
             return
         if not user_input:
             if headless:
+                _emit_shutdown()
                 return
             result = read_user_prompt(user_prompt, multiline_default=multiline)
             if result.eof:
+                _emit_shutdown()
                 return
             user_input = result.text or ""
             if debug_logger:
@@ -650,6 +824,7 @@ def run_loop(
         turn = next_turn
         if ended:
             if headless:
+                _emit_shutdown()
                 return
             print(
                 f"{COLOR_DIM}(model requested end; enter a new prompt to continue, or press Ctrl-D to exit){COLOR_RESET}"
@@ -678,6 +853,7 @@ def run_loop(
         try:
             user_input = input(user_prompt).strip()
         except EOFError:
+            _emit_shutdown()
             return
         if debug_logger and user_input is not None:
             debug_logger.log("user.input", f"turn={turn} content={user_input}")

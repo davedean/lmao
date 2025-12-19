@@ -281,6 +281,12 @@ def run_agent_turn(
             print(
                 f"{COLOR_DIM}(requests for user input are disallowed in headless mode; proceed autonomously or emit purpose='cannot_finish' and end){COLOR_RESET}"
             )
+            if user_messages:
+                combined = "\n\n".join(step.content for step in user_messages)
+                preview = _truncate_preview(combined, max_lines=4, max_chars=320)
+                if preview:
+                    purposes = ", ".join((step.purpose or "progress") for step in user_messages)
+                    print(f"{COLOR_DIM}(message preview; purpose={purposes})\n{preview}{COLOR_RESET}")
         if thinks:
             think_preview = _truncate_preview("\n\n".join(step.content for step in thinks), max_lines=3, max_chars=240)
             if think_preview:
@@ -392,7 +398,11 @@ def run_agent_turn(
                 tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
                 last_tool_summary = summarize_output(output, max_lines=max_tool_output[0], max_chars=max_tool_output[1])
                 if max_tool_output[1] > 0:
-                    tool_result_body = indent(f"[tool result] {tool_desc}\n{last_tool_summary}")
+                    args_repr = ""
+                    if tool_call.args not in ("", None, {}):
+                        args_repr = f" args: {tool_call.args!r}"
+                    tool_header = f"tool: {tool_call.tool}, {tool_call.target!r}{args_repr}"
+                    tool_result_body = indent(f"[tool result] {tool_header}\n{last_tool_summary}")
                     print(f"{COLOR_DIM}{tool_result_body}{COLOR_RESET}\n")
 
                 if debug_logger:

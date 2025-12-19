@@ -27,6 +27,10 @@ Tiny Python loop that lets a local LM Studio model act as a file-editing agent w
   python -m lmao --prompt-file ./prompt.txt
   ```
 
+## Docker Usage
+
+For containerized deployment, see [DOCKER.md](./DOCKER.md) for complete Docker setup and usage instructions.
+
 ## Persistent configuration
 Per-user defaults can live in `${XDG_CONFIG_HOME:-~/.config}/agents/lmao.conf` (`%APPDATA%\agents\lmao.conf` on Windows). When running, flag values come first, then environment variables, then the config file, and finally the bundled defaults. Use `--config PATH` to change the config file location, `--no-config` to ignore stored preferences for a single run, or `--print-config` to show the resolved settings (secrets are redacted) before exiting. Run `python -m lmao --config-init` to write the default `lmao.conf` at the resolved path when it does not already exist.
 

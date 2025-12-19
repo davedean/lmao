@@ -36,7 +36,7 @@ def _example_call_v1(tool: str) -> Dict[str, Any]:
 
 def _example_call_v2(tool: str) -> Dict[str, Any]:
     if tool == "read":
-        return {"tool": "read", "target": "README.md", "args": {"lines": "1-40"}}
+        return {"tool": "read", "target": "README.md", "args": {"range": "lines:1-40"}}
     if tool == "grep":
         return {"tool": "grep", "target": ".", "args": {"pattern": "matterbridge"}}
     if tool == "ls":

@@ -116,6 +116,8 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
     acceptable_types = {"assistant_turn", "think", "tool_call", "message", "end"}
     obj: Optional[Dict[str, Any]] = None
     first_loaded: Optional[Dict[str, Any]] = None
+    first_step_obj: Optional[Dict[str, Any]] = None
+    assistant_turn_obj: Optional[Dict[str, Any]] = None
     for candidate in _iter_jsonish_text_candidates(raw_text):
         loaded = _try_load_jsonish_dict(candidate)
         if loaded is None:
@@ -123,10 +125,16 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
         if first_loaded is None:
             first_loaded = loaded
         step_type = loaded.get("type")
-        if step_type in acceptable_types:
-            obj = loaded
-            break
-    if obj is None:
+        if step_type == "assistant_turn" and assistant_turn_obj is None:
+            assistant_turn_obj = loaded
+            continue
+        if step_type in acceptable_types and first_step_obj is None:
+            first_step_obj = loaded
+    if assistant_turn_obj is not None:
+        obj = assistant_turn_obj
+    elif first_step_obj is not None:
+        obj = first_step_obj
+    elif obj is None:
         obj = first_loaded if first_loaded is not None else _load_jsonish_dict(raw_text)
     if obj.get("type") != "assistant_turn":
         # Back-compat / model convenience: accept a single step dict and wrap it.

@@ -43,7 +43,6 @@ _HEADLESS_INPUT_REQUEST_PATTERNS = (
     "please confirm",
     "please clarify",
     "which one",
-    "which should",
     "what should i",
     "should i",
     "let me know",

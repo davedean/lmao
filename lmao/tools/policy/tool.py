@@ -86,11 +86,13 @@ def run(
             "path": str(nearest),
             "offset": offset,
             "limit": limit,
+            "limit_chars": limit,
             "total_chars": total_chars,
             "has_more": has_more,
             "next_offset": next_offset if has_more else None,
             "content": excerpt,
             "content_truncated": has_more,
+            "truncated": has_more,
         }
         return _success(data)
     except Exception as exc:

@@ -15,11 +15,12 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "v2 args optional: {pattern?:string} (filters by substring on tool name)",
+    "input_schema": "v2 args optional: {pattern?:string} (filters by substring on tool name; empty list if no matches)",
     "usage": [
         "{\"tool\":\"tools_list\",\"target\":\"\",\"args\":\"\"}",
         "{\"tool\":\"tools_list\",\"target\":\"\",\"args\":{}}",
         "{\"tool\":\"tools_list\",\"target\":\"\",\"args\":{\"pattern\":\"git\"}}",
+        "{\"tool\":\"tools_list\",\"target\":\"\",\"args\":{\"pattern\":\"nope\"}}",
     ],
 }
 
@@ -55,8 +56,6 @@ def run(
     if pattern:
         needle = pattern.lower()
         tools = [tool for tool in tools if needle in tool.name.lower()]
-        if not tools:
-            return _error(f"no tools matched pattern '{pattern}'")
 
     items = [{"name": tool.name, "description": tool.description} for tool in tools]
-    return _success({"tools": items})
+    return _success({"tools": items, "pattern": pattern})

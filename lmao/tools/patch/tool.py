@@ -22,11 +22,12 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "v2 args: {range:'lines:10-20',content:'...'} (or {start:int,end:int,content:'...'}); v1 args: JSON string or 'lines:..\\n...'",
+    "input_schema": "v2 args: {range:'lines:10-20',content:'...', path?:'./file'} (or {start:int,end:int,content:'...'}); v1 args: JSON string or 'lines:..\\n...'",
     "usage": [
         "{\"tool\":\"patch\",\"target\":\"file.py\",\"args\":\"{\\\"range\\\":\\\"lines:10-12\\\",\\\"content\\\":\\\"new text\\\"}\"}",
         "{\"tool\":\"patch\",\"target\":\"file.py\",\"args\":{\"range\":\"lines:10-12\",\"content\":\"new text\"}}",
         "{\"tool\":\"patch\",\"target\":\"file.py\",\"args\":\"lines:10-12\\nnew text\"}",
+        "{\"tool\":\"patch\",\"target\":\"\",\"args\":{\"path\":\"file.py\",\"start\":10,\"end\":12,\"content\":\"new text\"}}",
     ],
 }
 
@@ -92,6 +93,10 @@ def run(
     debug_logger: Optional[object] = None,
     meta: Optional[dict] = None,
 ) -> str:
+    if isinstance(args, dict) and not target:
+        target = str(args.get("path") or args.get("target") or "")
+    if not str(target or "").strip():
+        return _error("missing target path")
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)
     except Exception:

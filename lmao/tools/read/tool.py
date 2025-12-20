@@ -51,9 +51,7 @@ def run(
     if isinstance(args, dict) and not target:
         target = str(args.get("path") or args.get("target") or "")
     if not str(target or "").strip():
-        return _error(
-            "missing target file path; set target to a file path like 'AGENTS.md' (or args.path when target is empty)"
-        )
+        return _error("missing target file path")
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)
     except Exception:
@@ -90,9 +88,11 @@ def run(
     data: dict = {
         "path": normalize_path_for_output(target_path, base),
         "content": content,
+        "limit_chars": 200_000,
     }
     if range_info:
         data["lines"] = range_info
     if truncated:
         data["truncated"] = True
+        data["limit_chars"] = 200_000
     return _success(data)

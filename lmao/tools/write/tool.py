@@ -20,10 +20,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "v2 args: {content:'...'}; v1 args: content string; target: path",
+    "input_schema": "v2 args: {content:'...', path?:'./file'}; v1 args: content string; target: path",
     "usage": [
         "{\"tool\":\"write\",\"target\":\"./filename\",\"args\":\"new content\"}",
         "{\"tool\":\"write\",\"target\":\"./filename\",\"args\":{\"content\":\"new content\"}}",
+        "{\"tool\":\"write\",\"target\":\"\",\"args\":{\"path\":\"./filename\",\"content\":\"new content\"}}",
     ],
 }
 
@@ -63,10 +64,10 @@ def run(
     debug_logger: Optional[object] = None,
     meta: Optional[dict] = None,
 ) -> str:
+    if isinstance(args, dict) and not target:
+        target = str(args.get("path") or args.get("target") or "")
     if not str(target or "").strip():
-        return _error(
-            "missing target file path; set target to a relative file path like 'notes.txt' (mkdir is for directories)"
-        )
+        return _error("missing target file path")
     try:
         target_path = safe_target_path(target, base, extra_roots)
     except Exception:

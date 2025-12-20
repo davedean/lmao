@@ -17,7 +17,7 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": True,
-    "input_schema": "v2 args: {command:'...', timeout:10}; v1 args: command string; target may be cwd; timeout in seconds, default 10s",
+    "input_schema": "v2 args: {command:'...', timeout:10}; v1 args: command string; target may be cwd; timeout in seconds via args.timeout or meta.timeout_s, default 10s",
     "usage": [
         '{"tool":"bash","target":"","args":"echo ok"}',
         '{"tool":"bash","target":"","args":{"command":"echo ok"}}',
@@ -25,6 +25,7 @@ PLUGIN = {
         '{"tool":"bash","target":"","args":{"command":"npm install","timeout":60}}',
         '{"tool":"bash","target":"","args":{"command":"python3 -m lmao \"analyze the code in src/ directory for security issues\" --headless --max-turns 10", "timeout: 180"}}',
         '{"tool":"bash","target":"","args":{"command":"python train.py","timeout":300}}',
+        '{"tool":"bash","target":"","args":{"command":"sleep 2"},"meta":{"timeout_s":5}}',
     ],
 }
 
@@ -54,9 +55,14 @@ def run(
     if isinstance(args, dict):
         command = str(args.get("command") or args.get("cmd") or "").strip()
         timeout_raw = args.get("timeout")
+        if timeout_raw is None:
+            timeout_raw = args.get("timeout_s")
     else:
         command = str(args or target).strip()
         timeout_raw = None
+
+    if timeout_raw is None and isinstance(meta, dict):
+        timeout_raw = meta.get("timeout_s") if meta.get("timeout_s") is not None else meta.get("timeout")
 
     if not command:
         return _error("bash command is empty")

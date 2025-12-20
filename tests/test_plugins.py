@@ -1,4 +1,5 @@
 import json
+import sys
 import tempfile
 from pathlib import Path
 from unittest import TestCase
@@ -407,6 +408,96 @@ class BuiltinPluginTests(TestCase):
         payload = json.loads(result)
         self.assertTrue(payload["success"])
         self.assertEqual("ok", payload["data"]["stdout"])
+
+    def test_bash_plugin_timeout_from_meta(self) -> None:
+        allowed = get_allowed_tools(read_only=False, yolo_enabled=True, plugins=self.plugins.values())
+        self.assertIn("bash", allowed)
+
+        command = f"\"{sys.executable}\" -c \"import time; time.sleep(2)\""
+        call = ToolCall(
+            tool="bash",
+            target="",
+            args={"command": command},
+            meta={"timeout_s": 1},
+        )
+        result = run_tool(
+            call,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=True,
+            plugin_tools=self.plugins,
+        )
+        payload = json.loads(result)
+        self.assertFalse(payload["success"])
+        self.assertIn("timed out", payload["error"])
+
+    def test_bash_plugin_timeout_from_args(self) -> None:
+        allowed = get_allowed_tools(read_only=False, yolo_enabled=True, plugins=self.plugins.values())
+        self.assertIn("bash", allowed)
+
+        command = f"\"{sys.executable}\" -c \"import time; time.sleep(2)\""
+        call = ToolCall(
+            tool="bash",
+            target="",
+            args={"command": command, "timeout": 1},
+        )
+        result = run_tool(
+            call,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=True,
+            plugin_tools=self.plugins,
+        )
+        payload = json.loads(result)
+        self.assertFalse(payload["success"])
+        self.assertIn("timed out", payload["error"])
+
+    def test_bash_plugin_rejects_invalid_timeout(self) -> None:
+        allowed = get_allowed_tools(read_only=False, yolo_enabled=True, plugins=self.plugins.values())
+        self.assertIn("bash", allowed)
+
+        call = ToolCall(
+            tool="bash",
+            target="",
+            args={"command": "echo ok", "timeout": 0},
+        )
+        result = run_tool(
+            call,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=True,
+            plugin_tools=self.plugins,
+        )
+        payload = json.loads(result)
+        self.assertFalse(payload["success"])
+        self.assertIn("timeout must be a positive integer", payload["error"])
+
+    def test_bash_plugin_respects_target_cwd(self) -> None:
+        allowed = get_allowed_tools(read_only=False, yolo_enabled=True, plugins=self.plugins.values())
+        self.assertIn("bash", allowed)
+
+        subdir = self.base / "work"
+        subdir.mkdir()
+        command = f"\"{sys.executable}\" -c \"import os; print(os.path.basename(os.getcwd()))\""
+        call = ToolCall(
+            tool="bash",
+            target="work",
+            args={"command": command},
+        )
+        result = run_tool(
+            call,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=True,
+            plugin_tools=self.plugins,
+        )
+        payload = json.loads(result)
+        self.assertTrue(payload["success"])
+        self.assertEqual("work", payload["data"]["stdout"])
 
     def test_builtin_plugins_include_usage_examples(self) -> None:
         missing = [name for name, plugin in self.plugins.items() if not plugin.usage_examples]

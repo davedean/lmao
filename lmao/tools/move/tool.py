@@ -16,10 +16,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "v2 args: {to:'./new_path'}; v1 args: destination string; target: source",
+    "input_schema": "v2 args: {to:'./new_path', from?:'./old_path'}; v1 args: destination string; target: source",
     "usage": [
         "{\"tool\":\"move\",\"target\":\"./old_path\",\"args\":\"./new_path\"}",
         "{\"tool\":\"move\",\"target\":\"./old_path\",\"args\":{\"to\":\"./new_path\"}}",
+        "{\"tool\":\"move\",\"target\":\"\",\"args\":{\"from\":\"./old_path\",\"to\":\"./new_path\"}}",
     ],
 }
 
@@ -42,12 +43,18 @@ def run(
     debug_logger: Optional[object] = None,
     meta: Optional[dict] = None,
 ) -> str:
+    if isinstance(args, dict) and not target:
+        target = str(args.get("from") or args.get("source") or args.get("path") or "")
+    if not str(target or "").strip():
+        return _error("missing target path")
     try:
         source_path = safe_target_path(target or ".", base, extra_roots)
     except Exception:
         return _error(f"target path '{target}' escapes working directory")
     if isinstance(args, dict):
         args = args.get("to") or args.get("dest") or args.get("destination") or ""
+    if not str(args or "").strip():
+        return _error("missing target path")
     try:
         dest_path = safe_target_path(str(args), base, extra_roots)
     except Exception:

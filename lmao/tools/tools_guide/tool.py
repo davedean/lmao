@@ -24,6 +24,7 @@ PLUGIN = {
         "{\"tool\":\"tools_guide\",\"target\":\"\",\"args\":{\"tool\":\"async_tail\"}}",
         "{\"tool\":\"tools_guide\",\"target\":\"\",\"args\":{\"tools\":[\"read\",\"grep\"]}}",
         "{\"tool\":\"tools_guide\",\"target\":\"\",\"args\":{\"tool\":\"not_a_tool\",\"list_only\":true}}",
+        "{\"tool\":\"tools_guide\",\"target\":\"\",\"args\":{\"tools\":[\"read\",\"not_a_tool\"]}}",
     ],
 }
 

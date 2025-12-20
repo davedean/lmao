@@ -16,10 +16,11 @@ PLUGIN = {
     "allow_in_normal": True,
     "allow_in_yolo": True,
     "always_confirm": False,
-    "input_schema": "v2 args: {path:'./dirname'}; v1 target: directory path",
+    "input_schema": "v2 args: {path:'./dirname'}; v1 target: directory path (args.path/dir/target fallback)",
     "usage": [
         "{\"tool\":\"mkdir\",\"target\":\"./dirname\",\"args\":\"\"}",
         "{\"tool\":\"mkdir\",\"target\":\"\",\"args\":{\"path\":\"./dirname\"}}",
+        "{\"tool\":\"mkdir\",\"target\":\"\",\"args\":{\"target\":\"./dirname\"}}",
     ],
 }
 
@@ -43,7 +44,9 @@ def run(
     meta: Optional[dict] = None,
 ) -> str:
     if isinstance(args, dict) and not target:
-        target = str(args.get("path") or args.get("dir") or "")
+        target = str(args.get("path") or args.get("dir") or args.get("target") or "")
+    if not str(target or "").strip():
+        return _error("missing target path")
     try:
         target_path = safe_target_path(target or ".", base, extra_roots)
     except Exception:

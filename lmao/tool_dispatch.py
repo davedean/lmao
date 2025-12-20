@@ -118,8 +118,14 @@ def run_tool(
         mode = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
         return json_error(tool, f"plugin '{tool}' is not allowed in {mode} mode")
     if plugin.always_confirm:
-        if not yolo_enabled and not confirm_plugin_run(plugin, target, args):
-            return json_error(tool, f"plugin '{tool}' not approved by user")
+        if not yolo_enabled:
+            if runtime_context and runtime_context.headless:
+                return json_error(
+                    tool,
+                    f"plugin '{tool}' requires confirmation but headless mode is active",
+                )
+            if not confirm_plugin_run(plugin, target, args):
+                return json_error(tool, f"plugin '{tool}' not approved by user")
     try:
         handler = plugin.handler
         try:

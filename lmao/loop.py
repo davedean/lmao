@@ -54,6 +54,8 @@ _HEADLESS_INPUT_REQUEST_PATTERNS = (
     "what are your",
 )
 
+_TOOL_CALL_RE = re.compile(r'"type"\s*:\s*"tool_call"')
+
 
 def _headless_requests_user_input(messages: Sequence[str]) -> bool:
     for content in messages:
@@ -68,6 +70,23 @@ def _headless_requests_user_input(messages: Sequence[str]) -> bool:
             if re.search(r"\b(you|your|please|which|what|confirm|clarif|provide|choose)\b", lowered):
                 return True
     return False
+
+
+def _reply_mentions_tool_call(reply: str) -> bool:
+    return bool(_TOOL_CALL_RE.search(reply or ""))
+
+
+def _tool_only_reply(turn_obj: "AssistantTurn") -> str:
+    steps = []
+    for call in collect_tool_calls(turn_obj.steps):
+        payload = {"tool": call.tool, "target": call.target, "args": call.args}
+        if call.meta is not None:
+            payload["meta"] = call.meta
+        steps.append({"type": "tool_call", "call": payload})
+    reply = {"type": "assistant_turn", "version": turn_obj.version, "steps": steps}
+    if getattr(turn_obj, "turn", None) is not None:
+        reply["turn"] = turn_obj.turn
+    return json.dumps(reply, ensure_ascii=False)
 
 
 def _remove_prefixed_messages(messages: List[Dict[str, str]], prefix: str) -> None:
@@ -224,6 +243,10 @@ def run_agent_turn(
 
         try:
             turn_obj = parse_assistant_turn(assistant_reply, allowed_tools=allowed_tools)
+            if _reply_mentions_tool_call(assistant_reply) and not collect_tool_calls(turn_obj.steps):
+                raise ProtocolError(
+                    "assistant reply mentioned tool_call but no tool_call steps were parsed"
+                )
         except ProtocolError as exc:
             invalid_replies += 1
             if debug_logger:
@@ -260,6 +283,9 @@ def run_agent_turn(
         label_color = COLOR_BLUE
         thinks, user_messages, has_end = collect_steps(turn_obj.steps)
         tool_call_payloads = collect_tool_calls(turn_obj.steps)
+        if tool_call_payloads:
+            # Only honor end steps after tool calls have been processed.
+            has_end = False
         explicit_clarification_requested = any(
             msg.purpose == MESSAGE_PURPOSE_CLARIFICATION for msg in user_messages
         )
@@ -301,17 +327,20 @@ def run_agent_turn(
             think_preview = _truncate_preview("\n\n".join(step.content for step in thinks), max_lines=3, max_chars=240)
             if think_preview:
                 print(f"{COLOR_DIM}(think preview)\n{think_preview}{COLOR_RESET}")
-        if user_messages and not headless_input_requested:
-            combined = "\n\n".join(step.content for step in user_messages)
-            print(f"{combined}\n")
-        elif tool_call_payloads:
+        if tool_call_payloads:
             tools = ", ".join(call.tool for call in tool_call_payloads)
             print(f"{COLOR_DIM}(requesting tool(s): {tools}){COLOR_RESET}\n")
+        elif user_messages and not headless_input_requested:
+            combined = "\n\n".join(step.content for step in user_messages)
+            print(f"{combined}\n")
         else:
             print()
 
         # Preserve protocol conversation history for the model by storing the JSON turn without think steps.
-        sanitized_reply = sanitize_assistant_reply(assistant_reply, allowed_tools)
+        if tool_call_payloads:
+            sanitized_reply = _tool_only_reply(turn_obj)
+        else:
+            sanitized_reply = sanitize_assistant_reply(assistant_reply, allowed_tools)
         if turn_obj.steps:
             messages.append({"role": "assistant", "content": sanitized_reply})
         if headless_input_requested:

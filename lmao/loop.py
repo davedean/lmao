@@ -54,6 +54,23 @@ _HEADLESS_INPUT_REQUEST_PATTERNS = (
 )
 
 _TOOL_CALL_RE = re.compile(r'"type"\s*:\s*"tool_call"')
+_HEADLESS_STRIP_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
+_HEADLESS_STRIP_CODE_SPAN = re.compile(r"`[^`]*`")
+_HEADLESS_STRIP_DOUBLE_QUOTES = re.compile(r'"[^"]*"')
+
+
+def _scrub_headless_input_text(text: str) -> str:
+    lines = []
+    for line in text.splitlines():
+        if _HEADLESS_STRIP_TABLE_ROW.match(line):
+            continue
+        if line.lstrip().startswith(">"):
+            continue
+        lines.append(line)
+    scrubbed = "\n".join(lines)
+    scrubbed = _HEADLESS_STRIP_CODE_SPAN.sub("", scrubbed)
+    scrubbed = _HEADLESS_STRIP_DOUBLE_QUOTES.sub("", scrubbed)
+    return scrubbed
 
 
 def _headless_requests_user_input(messages: Sequence[str]) -> bool:
@@ -61,7 +78,8 @@ def _headless_requests_user_input(messages: Sequence[str]) -> bool:
         text = (content or "").strip()
         if not text:
             continue
-        lowered = text.lower()
+        scrubbed = _scrub_headless_input_text(text)
+        lowered = scrubbed.lower()
         if any(pat in lowered for pat in _HEADLESS_INPUT_REQUEST_PATTERNS):
             return True
         if "?" in lowered:

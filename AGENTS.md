@@ -5,10 +5,10 @@
 - Tools and guards live in `lmao/tools.py`; plugin loading lives in `lmao/plugins.py` and auto-loads `tool.py` files under `lmao/tools/**`.
 - Context/safety scaffolding is in `lmao/context.py` (AGENTS discovery up to the repo root, user-level notes at `~/.config/agents/AGENTS.md`, skills under both repo `./skills` and optional `~/.config/agents/skills`).
 - Skills belong in `skills/<name>/SKILL.md` with YAML frontmatter and supporting files in the same folder.
-- `.github/workflows/ci.yml`: CI compiles the code with `python -m compileall lmao` as a syntax sanity check.
+- `.github/workflows/ci.yml`: CI runs `mypy`, `python -m compileall lmao`, and `python -m unittest discover -s tests`.
 - Tests live in `tests/` (unittest-based).
 
--## Runtime Behavior & Tools
+## Runtime Behavior & Tools
 - Default tools: read, write, mkdir, move, ls, find, grep, list_skills, plus plugins (git_add/git_commit, bash). Tool outputs are JSON (`success` + `data`/`error`). Do not call `list_skills` unless the user explicitly asks about skills or you need a skill path.
 - We no longer expose task-list tooling or protocol steps; the model should plan in natural language or files and issue tool_call steps directly.
 - Path safety keeps targets under the working directory; writes into skill roots must stay inside `skills/<name>/`.
@@ -19,6 +19,7 @@
 ## Build, Test, and Development Commands
 - `python -m lmao --help` — show CLI flags and defaults.
 - `python -m lmao "describe this repo" --endpoint http://localhost:1234/v1/chat/completions --model qwen3-4b-instruct` — sample run; change prompt/endpoint/model as needed.
+- `mypy --config-file mypy.ini` — match CI type checking (default config also auto-loads).
 - `python -m compileall lmao` — mirrors the CI syntax check to catch parse errors early.
 - `python -m unittest discover tests` — quick unit tests (standard library only).
 - Manual smoke: run against a reachable LM Studio endpoint; use `--silent-tools` when you only need model output.
@@ -29,7 +30,7 @@
 - When editing the skill guide or tool prompt blocks, keep messaging concise and avoid introducing dependencies or unsafe defaults.
 
 ## Testing Guidelines
-- CI only runs `python -m compileall lmao`; locally you can add `python -m unittest discover tests` for quick coverage.
+- CI runs `mypy`, `python -m compileall lmao`, and unit tests; keep all three green when changing `agent_loop.py` or `lmao/*.py`.
 - For manual tests, prefer short prompts, `--max-turns` to bound conversations, and `--silent-tools` when you only need model output.
 
 ## Commit & Pull Request Guidelines

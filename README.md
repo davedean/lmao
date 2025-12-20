@@ -122,4 +122,4 @@ Environment defaults:
 
 ## Development
 - Dependencies: standard library only (Python 3.10+ recommended).
-- CI (see `.github/workflows/ci.yml`) runs `python -m compileall lmao` and `python -m unittest discover -s tests`.
+- CI (see `.github/workflows/ci.yml`) runs `mypy`, `python -m compileall lmao`, and `python -m unittest discover -s tests`.

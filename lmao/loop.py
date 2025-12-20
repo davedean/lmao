@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .debug_log import DebugLogger
 from .context import build_system_message, gather_context
 from .llm import LLMCallStats, LLMClient
-from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
+from .protocol import AssistantTurn, ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
 from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
 from .plugins import PluginTool, discover_plugins
 from .text_utils import truncate_text
@@ -83,7 +83,7 @@ def _tool_only_reply(turn_obj: "AssistantTurn") -> str:
         if call.meta is not None:
             payload["meta"] = call.meta
         steps.append({"type": "tool_call", "call": payload})
-    reply = {"type": "assistant_turn", "version": turn_obj.version, "steps": steps}
+    reply: Dict[str, Any] = {"type": "assistant_turn", "version": turn_obj.version, "steps": steps}
     if getattr(turn_obj, "turn", None) is not None:
         reply["turn"] = turn_obj.turn
     return json.dumps(reply, ensure_ascii=False)
@@ -357,8 +357,8 @@ def run_agent_turn(
 
         if user_messages and not tool_call_payloads and not has_end and not input_requested:
             progress_only_turns += 1
-            purposes = {msg.purpose for msg in user_messages}
-            needs_explicit_end = bool(purposes.intersection({"final", MESSAGE_PURPOSE_CANNOT_FINISH}))
+            purpose_set = {msg.purpose for msg in user_messages}
+            needs_explicit_end = bool(purpose_set.intersection({"final", MESSAGE_PURPOSE_CANNOT_FINISH}))
             if progress_only_turns >= 4:
                 reminder = (
                     "You have emitted multiple message-only turns without taking an action. "

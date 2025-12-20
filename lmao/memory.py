@@ -4,7 +4,7 @@ import json
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 from .debug_log import DebugLogger
 from .llm import LLMClient, ProviderName, estimate_message_tokens
@@ -114,7 +114,11 @@ def truncate_tool_result_for_prompt(
 
 def determine_prompt_budget(client: LLMClient) -> Tuple[int, int, int]:
     """Compute max prompt tokens, and the trigger/target thresholds."""
-    provider = getattr(client, "provider", "lmstudio")
+    provider_value = getattr(client, "provider", "lmstudio")
+    if provider_value in DEFAULT_CONTEXT_WINDOW_TOKENS:
+        provider = cast(ProviderName, provider_value)
+    else:
+        provider = "lmstudio"
     override = getattr(client, "context_window_tokens", None)
     context_window = _context_window_for_provider(provider, override=override)
     reserved = _reserved_completion_tokens(client, context_window)

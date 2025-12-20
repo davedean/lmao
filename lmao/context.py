@@ -147,7 +147,10 @@ def build_tool_prompt(
     if "bash" in resolved and not yolo_enabled:
         prompt = f"{prompt}\nNote: 'bash' prompts for confirmation on every command. Use only when necessary."
     if yolo_enabled:
-        prompt = f"{prompt}\nYolo mode is enabled: tool runs are auto-approved (no per-call confirmations)."
+        prompt = (
+            f"{prompt}\nYolo mode is enabled: tool runs are auto-approved (no per-call confirmations). "
+            "Path sandboxing is disabled for built-in tools; absolute paths are allowed."
+        )
     if headless:
         prompt = (
             f"{prompt}\nHeadless mode is active: the user cannot respond during the run. "

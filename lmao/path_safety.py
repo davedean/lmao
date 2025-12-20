@@ -16,8 +16,23 @@ def normalize_path_for_output(path: Path, base: Path) -> str:
     return rel_str
 
 
-def safe_target_path(target: str, base: Path, extra_roots: Sequence[Path]) -> Path:
+def safe_target_path(
+    target: str,
+    base: Path,
+    extra_roots: Sequence[Path],
+    *,
+    allow_outside: bool = False,
+) -> Path:
     target_str = str(target or "").strip()
+    if allow_outside:
+        if not target_str:
+            return base.resolve()
+        raw_path = Path(target_str).expanduser()
+        if raw_path.is_absolute():
+            return raw_path.resolve()
+        if target_str in ("/", "\\"):
+            return Path(target_str).resolve()
+        return (base / raw_path).resolve()
     allowed_roots = [base] + [p.resolve() for p in extra_roots]
     # Model ergonomics: treat "/" as "repo root" (the working directory base), not filesystem root.
     if target_str in ("/", "\\"):

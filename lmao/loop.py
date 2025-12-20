@@ -127,7 +127,7 @@ def run_agent_turn(
     allowed_tools: Sequence[str],
     plugin_tools: Dict[str, PluginTool],
     show_stats: bool,
-    max_turns: Optional[int],
+    max_turns: Optional[int] = None,
     debug_logger: Optional[DebugLogger] = None,
     runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
     runtime_context: Optional[RuntimeContext] = None,
@@ -289,23 +289,13 @@ def run_agent_turn(
         explicit_clarification_requested = any(
             msg.purpose == MESSAGE_PURPOSE_CLARIFICATION for msg in user_messages
         )
-        implicit_input_requested = _headless_requests_user_input(
-            [
-                msg.content
-                for msg in user_messages
-                if msg.purpose not in (MESSAGE_PURPOSE_CANNOT_FINISH, "final")
-            ]
-        )
+        input_check_messages = [
+            msg.content for msg in user_messages if msg.purpose != MESSAGE_PURPOSE_CANNOT_FINISH
+        ]
+        implicit_input_requested = _headless_requests_user_input(input_check_messages)
         input_requested = explicit_clarification_requested or implicit_input_requested
         headless_input_requested = headless_run and (
-            explicit_clarification_requested
-            or _headless_requests_user_input(
-                [
-                    msg.content
-                    for msg in user_messages
-                    if msg.purpose not in (MESSAGE_PURPOSE_CANNOT_FINISH, "final")
-                ]
-            )
+            explicit_clarification_requested or _headless_requests_user_input(input_check_messages)
         )
 
         if debug_logger:

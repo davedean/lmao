@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .debug_log import DebugLogger
 from .path_safety import safe_target_path
+from .plugin_helpers import set_yolo_path_mode
 from .plugins import PluginTool
 from .tool_parsing import ToolCall
 from .runtime_tools import RuntimeContext, RuntimeTool, runtime_tool_allowed
@@ -107,7 +108,12 @@ def run_tool(
         return json_error(tool, f"unsupported tool '{tool}'")
 
     try:
-        _target_path = safe_target_path(target or ".", base, extra_roots)
+        _target_path = safe_target_path(
+            target or ".",
+            base,
+            extra_roots,
+            allow_outside=yolo_enabled,
+        )
     except Exception as exc:
         if debug_logger:
             debug_logger.log("tool.error", f"tool={tool} target={target!r} path_escape_error={exc}")
@@ -136,6 +142,7 @@ def run_tool(
         except Exception:
             accepts_meta = False
 
+        set_yolo_path_mode(yolo_enabled)
         if accepts_meta:
             result = handler(
                 target,
@@ -164,3 +171,5 @@ def run_tool(
         if debug_logger:
             debug_logger.log("plugin.error", f"tool={tool} path={plugin.path} error={exc}")
         return json_error(tool, f"plugin '{tool}' failed: {exc}")
+    finally:
+        set_yolo_path_mode(False)

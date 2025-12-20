@@ -12,9 +12,18 @@ from .path_safety import (
 from .skills import validate_skill_write_target as _validate_skill_write_target
 
 
+_YOLO_PATHS_ENABLED = False
+
+
+def set_yolo_path_mode(enabled: bool) -> None:
+    """Toggle path sandboxing for plugin helpers (used by the runtime)."""
+    global _YOLO_PATHS_ENABLED
+    _YOLO_PATHS_ENABLED = bool(enabled)
+
+
 def safe_target_path(target: str, base: Path, extra_roots: Sequence[Path]) -> Path:
     """Path-safe resolver for plugins; reuses core sandboxing rules."""
-    return _safe_target_path(target, base, extra_roots)
+    return _safe_target_path(target, base, extra_roots, allow_outside=_YOLO_PATHS_ENABLED)
 
 
 def normalize_path_for_output(path: Path, base: Path) -> str:
@@ -35,4 +44,3 @@ def validate_skill_write_target(target_path: Path, skill_roots: Sequence[Path]) 
 def find_repo_root(start: Path) -> Path:
     """Find the nearest git repo root from a starting directory."""
     return _find_repo_root(start)
-

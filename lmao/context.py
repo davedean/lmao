@@ -26,14 +26,6 @@ def _wrap_tool_payload_usage_example_as_assistant_turn(example: str) -> Optional
     return json.dumps(wrapped, ensure_ascii=False)
 
 
-def _example_call_v1(tool: str) -> Dict[str, Any]:
-    if tool == "read":
-        return {"tool": "read", "target": "README.md", "args": "lines:1-40"}
-    if tool == "grep":
-        return {"tool": "grep", "target": ".", "args": "matterbridge"}
-    return {"tool": tool, "target": ".", "args": ""}
-
-
 def _example_call_v2(tool: str) -> Dict[str, Any]:
     if tool == "read":
         return {"tool": "read", "target": "README.md", "args": {"range": "lines:1-40"}}
@@ -106,31 +98,28 @@ def build_tool_prompt(
     tool_call_examples: List[str] = []
     if resolved:
         example_tool = _pick_example_tool(resolved)
-        tool_call_v1 = {
-            "type": "assistant_turn",
-            "version": "1",
-            "steps": [{"type": "tool_call", "call": _example_call_v1(example_tool)}],
-        }
         tool_call_v2 = {
             "type": "assistant_turn",
             "version": "2",
             "steps": [{"type": "tool_call", "call": {**_example_call_v2(example_tool), "meta": {"timeout_s": 10}}}],
         }
         tool_call_examples = [
-            f"Tool call example (v1): {json.dumps(tool_call_v1, ensure_ascii=False)}",
             f"Tool call example (v2): {json.dumps(tool_call_v2, ensure_ascii=False)}",
             "If you are unsure how to call a tool or what args it accepts, call tools_guide (or tools_list to discover tools).",
         ]
     prompt_lines = [
         "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
         "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]}",
-        "Protocol v1 is still accepted, but prefer v2 (structured args/meta).",
         "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
+        "assistant_turn schema: {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]} (steps is a JSON list).",
         "Steps: think | tool_call | message | end. Tool outputs are JSON with success + data/error.",
+        "Think step: {\"type\":\"think\",\"content\":\"...\"} (content must be a non-empty string).",
         "Ending rule: the session ends ONLY when you include an explicit end step; a message step (even purpose='final') does NOT end the loop.",
         "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
         "Message purpose values: progress | clarification | cannot_finish | final (default: progress).",
         "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
+        "Tool call step (v2): {\"type\":\"tool_call\",\"call\":{\"tool\":\"<name>\",\"target\":\"\",\"args\":{...},\"meta\":{\"timeout_s\":10}}}",
+        "End step: {\"type\":\"end\",\"reason\":\"completed\"} (reason optional; defaults to completed).",
         *tool_call_examples,
         "Example (finish): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"message\",\"purpose\":\"final\",\"format\":\"markdown\",\"content\":\"...\"},{\"type\":\"end\",\"reason\":\"completed\"}]}",
         "Available tools (including plugins):",

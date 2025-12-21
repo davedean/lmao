@@ -20,6 +20,7 @@ from .config import (
     write_default_config,
 )
 from .debug_log import DebugLogger
+from .error_log import ErrorLogger
 from .llm import LLMClient, ProviderName
 from .loop import run_loop
 from .openrouter_free_models import (
@@ -41,6 +42,15 @@ OPENROUTER_DEFAULT_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 def _resolve_debug_log_path(base_dir: Path, config_log_path: Optional[str]) -> Path:
     if not config_log_path:
         return base_dir / "debug.log"
+    resolved = Path(config_log_path).expanduser()
+    if resolved.is_absolute():
+        return resolved
+    return base_dir / resolved
+
+
+def _resolve_error_log_path(base_dir: Path, config_log_path: Optional[str]) -> Path:
+    if not config_log_path:
+        return base_dir / "error.log"
     resolved = Path(config_log_path).expanduser()
     if resolved.is_absolute():
         return resolved
@@ -155,6 +165,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--yolo", action="store_true", help="Legacy: enable yolo mode (use --mode yolo instead)")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log")
+    parser.add_argument(
+        "--error-log",
+        metavar="PATH",
+        help="Write tool failure logs to PATH (default: error.log in workdir)",
+    )
     parser.add_argument("--read-only", action="store_true", help="Legacy: disable destructive plugins (use --mode readonly instead)")
     return parser
 
@@ -209,6 +224,7 @@ def _config_summary(
         "read_only": read_only,
         "yolo_enabled": yolo_enabled,
         "workdir": str(workdir),
+        "error_log_path": args.error_log or config_result.config.error_log_path,
         "config_path": str(config_path),
         "config_loaded": config_result.loaded,
         "config_disabled": args.no_config,
@@ -319,6 +335,12 @@ def main() -> None:
     debug_logger = (
         DebugLogger(_resolve_debug_log_path(base_dir, config.debug_log_path))
         if args.debug
+        else None
+    )
+    error_log_path = args.error_log or config.error_log_path
+    error_logger = (
+        ErrorLogger(_resolve_error_log_path(base_dir, error_log_path))
+        if error_log_path
         else None
     )
     if debug_logger and config_result.error:
@@ -456,6 +478,7 @@ def main() -> None:
             multiline=multiline,
             plugin_dirs=[built_in_plugins_dir],
             debug_logger=debug_logger,
+            error_logger=error_logger,
             policy_truncate=policy_truncate,
             policy_truncate_chars=policy_truncate_chars,
         )

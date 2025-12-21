@@ -40,6 +40,7 @@ class UserConfig:
     openrouter_free_blacklist: tuple[str, ...] = ()
     workdir: Optional[str] = None
     debug_log_path: Optional[str] = None
+    error_log_path: Optional[str] = None
     policy_truncate: Optional[bool] = None
     policy_truncate_chars: Optional[int] = None
 
@@ -102,6 +103,9 @@ max_tool_lines = 8
 max_tool_chars = 400
 
 [debug]
+log_path =
+
+[errors]
 log_path =
 """
 
@@ -280,6 +284,7 @@ def load_user_config(path: Path) -> ConfigLoadResult:
                 parser, "openrouter", "free_blacklist"
             ),
             debug_log_path=_read_string(parser, "debug", "log_path"),
+            error_log_path=_read_string(parser, "errors", "log_path"),
             policy_truncate=_read_bool(parser, "policy", "truncate"),
             policy_truncate_chars=_read_int(parser, "policy", "truncate_chars"),
         )

@@ -6,6 +6,7 @@ import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from .debug_log import DebugLogger
+from .error_log import ErrorLogger
 from .context import build_system_message, gather_context
 from .llm import LLMCallStats, LLMClient
 from .protocol import AssistantTurn, ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
@@ -148,6 +149,7 @@ def run_agent_turn(
     debug_logger: Optional[DebugLogger] = None,
     runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
     runtime_context: Optional[RuntimeContext] = None,
+    error_logger: Optional[ErrorLogger] = None,
 ) -> Tuple[int, Optional[LLMCallStats], bool]:
     """
     Run the agent for a single user-visible turn.
@@ -172,6 +174,39 @@ def run_agent_turn(
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
+
+    def log_tool_failure(tool_call: ToolCall, output: str) -> None:
+        if not error_logger:
+            return
+        payload = {
+            "turn": current_turn,
+            "tool": tool_call.tool,
+            "target": tool_call.target,
+            "args": tool_call.args,
+            "meta": tool_call.meta,
+            "last_user": last_user,
+        }
+        try:
+            parsed = json.loads(output)
+        except Exception as exc:
+            payload["output_parse_error"] = str(exc)
+            payload["output"] = _truncate_preview(output, max_lines=12, max_chars=2000)
+            error_logger.log("tool.failure", payload)
+            return
+        if isinstance(parsed, dict):
+            success = parsed.get("success")
+            payload["output_payload"] = {
+                "tool": parsed.get("tool"),
+                "success": success,
+                "error": parsed.get("error"),
+                "data": parsed.get("data"),
+            }
+            if success is not True:
+                error_logger.log("tool.failure", payload)
+        else:
+            payload["output_parse_error"] = "tool output was not a JSON object"
+            payload["output"] = _truncate_preview(output, max_lines=12, max_chars=2000)
+            error_logger.log("tool.failure", payload)
 
     memory_state = runtime_context.memory_state if runtime_context and runtime_context.memory_state else None
     _, trigger_tokens, target_tokens = determine_prompt_budget(client)
@@ -441,6 +476,7 @@ def run_agent_turn(
                     runtime_context=runtime_context,
                     debug_logger=debug_logger,
                 )
+                log_tool_failure(tool_call, output)
                 tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
                 last_tool_summary = summarize_output(output, max_lines=max_tool_output[0], max_chars=max_tool_output[1])
                 if max_tool_output[1] > 0:
@@ -491,6 +527,7 @@ def run_loop(
     multiline: bool = False,
     plugin_dirs: Optional[Sequence[Path]] = None,
     debug_logger: Optional[DebugLogger] = None,
+    error_logger: Optional[ErrorLogger] = None,
     policy_truncate: bool = True,
     policy_truncate_chars: int = 2000,
 ) -> None:
@@ -703,6 +740,7 @@ def run_loop(
             show_stats=show_stats,
             max_turns=max_turns,
             debug_logger=debug_logger,
+            error_logger=error_logger,
         )
         turn = next_turn
         if ended:

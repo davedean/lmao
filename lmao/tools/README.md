@@ -13,7 +13,7 @@ Built-in plugins live under `lmao/tools/<plugin-name>/tool.py` and are auto-load
   - `always_confirm` (bool; defaults to `False`; when true, the user must approve each run in non-yolo modes)
   - `input_schema` (optional string description)
   - `usage` (optional string or list of example tool JSON payloads for the `call` object; available via `tools_guide` even when the system prompt uses a compact tool list)
-- `run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None) -> str` that returns a JSON string with `{"tool": name, "success": bool, "data"|"error": ...}`.
+- `run(target, args, base, extra_roots, skill_roots, debug_logger=None) -> str` that returns a JSON string with `{"tool": name, "success": bool, "data"|"error": ...}`.
 
 Mode gating:
 - Read-only mode blocks plugins unless `allow_in_read_only` is true (regardless of yolo).
@@ -28,7 +28,7 @@ Safety tips:
 - Shared helpers: import from `lmao.plugin_helpers` to avoid reimplementing sandbox checks and text parsing, e.g., `from lmao.plugin_helpers import safe_target_path, normalize_path_for_output, parse_line_range, validate_skill_write_target, find_repo_root`.
 
 Examples:
-- Core plugins: file ops (read/write/mkdir/move/ls/find/grep), task tools, git add/commit, and bash all live under `lmao/tools/*`.
+- Core plugins: file ops (read/write/mkdir/move/ls/find/grep), git add/commit, and bash all live under `lmao/tools/*`.
 - Patch plugin (`lmao/tools/patch`) updates a line range in an existing file without rewriting the entire file content.
 - Git plugins (`lmao/tools/git-add`, `lmao/tools/git-commit`) allow normal/yolo, block read-only.
 - A hypothetical delete plugin could set `allow_in_normal=False`, `allow_in_yolo=True`, and `always_confirm=True` to prompt before executing.

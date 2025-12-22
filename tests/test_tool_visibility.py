@@ -126,7 +126,7 @@ PLUGIN = {
     "visible_to_agent": False
 }
 
-def run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None):
+def run(target, args, base, extra_roots, skill_roots, debug_logger=None):
     return '{"tool":"test_hidden","success":true,"data":{}}'
 """,
             encoding="utf-8",

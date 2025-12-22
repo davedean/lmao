@@ -179,9 +179,7 @@ def _extract_async_bash_command(args: str, target: str) -> str:
     if " -- " in raw:
         _, cmd = raw.split(" -- ", 1)
         return cmd.strip()
-    tokens = raw.split()
-    filtered = [tok for tok in tokens if not tok.startswith("track_task=")]
-    normalized = " ".join(filtered).strip()
+    normalized = " ".join(raw.split()).strip()
     if normalized:
         return normalized
     return str(target or "").strip()
@@ -194,7 +192,6 @@ def run(
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
-    task_manager=None,
     debug_logger: Optional[object] = None,
     meta: Optional[dict] = None,
 ) -> str:

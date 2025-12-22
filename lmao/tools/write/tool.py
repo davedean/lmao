@@ -60,7 +60,6 @@ def run(
     base: Path,
     extra_roots: Sequence[Path],
     skill_roots: Sequence[Path],
-    task_manager=None,
     debug_logger: Optional[object] = None,
     meta: Optional[dict] = None,
 ) -> str:

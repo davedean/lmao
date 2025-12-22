@@ -21,7 +21,6 @@ def run(
     base,
     extra_roots,
     skill_roots,
-    task_manager=None,
     debug_logger=None,
     meta=None,
 ):

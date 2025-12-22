@@ -61,7 +61,7 @@ class ToolHookIntegrationTests(TestCase):
     def test_post_transform_hook_overrides_result(self) -> None:
         registry = HookRegistry()
 
-        def handler(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None):
+        def handler(target, args, base, extra_roots, skill_roots, debug_logger=None):
             return json.dumps({"tool": "echo", "success": True, "data": {"value": args}})
 
         plugin = PluginTool(
@@ -136,7 +136,7 @@ PLUGIN = {
     }
 }
 
-def run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None):
+def run(target, args, base, extra_roots, skill_roots, debug_logger=None):
     return ""
 
 def hook_fn(context):

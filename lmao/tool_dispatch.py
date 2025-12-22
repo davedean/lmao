@@ -116,7 +116,6 @@ def run_tool(
     plugin_tools: Optional[Dict[str, PluginTool]] = None,
     runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
     runtime_context: Optional[RuntimeContext] = None,
-    task_manager: Optional[Any] = None,
     debug_logger: Optional[DebugLogger] = None,
 ) -> str:
     tool = tool_call.tool
@@ -369,7 +368,7 @@ def run_tool(
             accepts_varargs = any(
                 p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
             )
-            accepts_meta = accepts_varargs or len(params) >= 8
+            accepts_meta = accepts_varargs or len(params) >= 7
         except Exception:
             accepts_meta = False
 
@@ -381,7 +380,6 @@ def run_tool(
                 base,
                 extra_roots,
                 skill_roots,
-                task_manager,
                 debug_logger,
                 meta,
             )
@@ -392,7 +390,6 @@ def run_tool(
                 base,
                 extra_roots,
                 skill_roots,
-                task_manager,
                 debug_logger,
             )
         if not isinstance(result, str):

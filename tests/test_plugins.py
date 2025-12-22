@@ -23,7 +23,7 @@ PLUGIN = {{
 }}
 
 
-def run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None):
+def run(target, args, base, extra_roots, skill_roots, debug_logger=None):
     import json
     return json.dumps({{"tool": "{name}", "success": True, "data": {{"target": target, "args": args}}}})
 """
@@ -43,7 +43,7 @@ PLUGIN = {{
 }}
 
 
-def run(target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None, meta=None):
+def run(target, args, base, extra_roots, skill_roots, debug_logger=None, meta=None):
     import json
     return json.dumps({{"tool": "{name}", "success": True, "data": {{"target": target, "args": args, "meta": meta}}}})
 """
@@ -76,7 +76,7 @@ PLUGINS = [
 ]
 
 
-def run(tool_name, target, args, base, extra_roots, skill_roots, task_manager=None, debug_logger=None):
+def run(tool_name, target, args, base, extra_roots, skill_roots, debug_logger=None):
     import json
     return json.dumps({{"tool": tool_name, "success": True, "data": {{"target": target, "args": args}}}})
 """

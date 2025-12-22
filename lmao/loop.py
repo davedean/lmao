@@ -184,6 +184,8 @@ def run_agent_turn(
     invalid_replies = 0
     think_only_turns = 0
     progress_only_turns = 0
+    runtime_tools = runtime_tools or {}
+    known_tools = sorted(set(list(plugin_tools.keys()) + list(runtime_tools.keys())))
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())

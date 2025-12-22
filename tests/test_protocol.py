@@ -142,21 +142,6 @@ class ProtocolParsingTests(TestCase):
             )
         self.assertIn("not allowed", str(exc.exception))
 
-    def test_allows_multiple_task_tool_steps(self) -> None:
-        raw = json.dumps(
-            {
-                "type": "assistant_turn",
-                "version": "1",
-                "steps": [
-                    {"type": "add_task", "args": {"task": "one"}},
-                    {"type": "add_task", "args": {"task": "two"}},
-                    {"type": "list_tasks"},
-                ],
-            }
-        )
-        turn = parse_assistant_turn(raw, allowed_tools=["add_task", "list_tasks"])
-        self.assertEqual(3, len(turn.steps))
-
     def test_accepts_extra_data_with_valid_prefix(self) -> None:
         raw = (
             '{"type":"assistant_turn","version":"1","steps":[{"type":"message","content":"hi"}]}'

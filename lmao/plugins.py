@@ -216,7 +216,6 @@ def load_plugins(
                 base: Path,
                 extra_roots,
                 skill_roots,
-                task_manager=None,
                 debug_logger: Optional[DebugLogger] = None,
                 meta: Optional[Dict[str, Any]] = None,
                 _tool_name: str = tool_name,
@@ -227,7 +226,7 @@ def load_plugins(
                     accepts_varargs = any(
                         p.kind == inspect.Parameter.VAR_POSITIONAL for p in params
                     )
-                    accepts_meta = accepts_varargs or len(params) >= 9
+                    accepts_meta = accepts_varargs or len(params) >= 8
                 except Exception:
                     accepts_meta = False
                 if accepts_meta:
@@ -238,7 +237,6 @@ def load_plugins(
                         base,
                         extra_roots,
                         skill_roots,
-                        task_manager,
                         debug_logger,
                         meta,
                     )
@@ -249,7 +247,6 @@ def load_plugins(
                     base,
                     extra_roots,
                     skill_roots,
-                    task_manager,
                     debug_logger,
                 )
 

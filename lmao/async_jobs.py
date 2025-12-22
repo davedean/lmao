@@ -42,10 +42,6 @@ class AsyncJob:
     proc: Optional[subprocess.Popen] = None
     proc_cwd: Optional[Path] = None
 
-    # Optional integration with the runtime task list.
-    task_id: Optional[int] = None
-    task_label: Optional[str] = None
-
 
 class AsyncJobManager:
     def __init__(self, *, max_events: int = 500, max_event_chars: int = 50_000) -> None:
@@ -69,16 +65,6 @@ class AsyncJobManager:
     def get_job(self, job_id: str) -> Optional[AsyncJob]:
         with self._lock:
             return self._jobs.get(job_id)
-
-    def attach_task(self, job_id: str, *, task_id: int, label: str) -> bool:
-        with self._lock:
-            job = self._jobs.get(job_id)
-            if job is None:
-                return False
-            job.task_id = int(task_id)
-            job.task_label = str(label)
-            job.last_update_at = time.time()
-            return True
 
     def start_tail(self, path: Path, *, start_at: Literal["start", "end"] = "end", encoding: str = "utf-8") -> str:
         job_id = self._new_id()
@@ -166,8 +152,6 @@ class AsyncJobManager:
             "kind": job.kind,
             "status": job.status,
             "error": job.error,
-            "task_id": job.task_id,
-            "task_label": job.task_label,
             "since_seq": since_seq,
             "next_seq": job._next_seq,
             "events": [{"seq": e.seq, "stream": e.stream, "text": e.text} for e in events],
@@ -179,8 +163,6 @@ class AsyncJobManager:
             detail["path"] = str(job.tail_path)
         if job.kind == "bash" and job.proc is not None:
             detail["pid"] = getattr(job.proc, "pid", None)
-        if job.task_id is not None:
-            detail["task_id"] = job.task_id
         return detail
 
     def _events_since(self, job: AsyncJob, since_seq: int) -> List[OutputEvent]:

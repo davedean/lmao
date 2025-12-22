@@ -4,6 +4,13 @@ import json
 from dataclasses import dataclass
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
+from .hooks import (
+    ErrorHookContext,
+    ErrorHookTypes,
+    ProtocolHookContext,
+    ProtocolHookTypes,
+    get_global_hook_registry,
+)
 from .jsonish import iter_jsonish_candidates, try_load_jsonish
 
 
@@ -247,6 +254,61 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
             raise ProtocolError("assistant_turn.turn must be an integer when provided")
 
     return AssistantTurn(type="assistant_turn", version=version, steps=steps, turn=turn)
+
+
+def parse_assistant_turn_with_hooks(
+    raw_text: str,
+    allowed_tools: Sequence[str],
+    *,
+    hook_registry=None,
+    runtime_state: Optional[Dict[str, Any]] = None,
+    session_data: Optional[Dict[str, Any]] = None,
+) -> AssistantTurn:
+    registry = hook_registry or get_global_hook_registry()
+    base_state = dict(runtime_state or {})
+    base_state.update({"allowed_tools": list(allowed_tools)})
+    context = ProtocolHookContext(
+        hook_type=ProtocolHookTypes.PRE_ASSISTANT_TURN_PARSING,
+        runtime_state=base_state,
+        session_data=dict(session_data or {}),
+        raw_message=raw_text,
+    )
+    pre_result = registry.execute_hooks(ProtocolHookTypes.PRE_ASSISTANT_TURN_PARSING, context)
+    if pre_result.modified_context and pre_result.modified_context.raw_message is not None:
+        raw_text = pre_result.modified_context.raw_message
+    try:
+        turn = parse_assistant_turn(raw_text, allowed_tools=allowed_tools)
+    except ProtocolError as exc:
+        error_context = ProtocolHookContext(
+            hook_type=ProtocolHookTypes.ON_PROTOCOL_ERROR,
+            runtime_state=base_state,
+            session_data=dict(session_data or {}),
+            raw_message=raw_text,
+            validation_errors=[str(exc)],
+        )
+        registry.execute_hooks(ProtocolHookTypes.ON_PROTOCOL_ERROR, error_context)
+        registry.execute_hooks(
+            ErrorHookTypes.ON_PROTOCOL_PARSE_ERROR,
+            ErrorHookContext(
+                hook_type=ErrorHookTypes.ON_PROTOCOL_PARSE_ERROR,
+                runtime_state=base_state,
+                session_data=dict(session_data or {}),
+                error_type="ProtocolError",
+                error_message=str(exc),
+                error_exception=exc,
+                original_context=error_context,
+            ),
+        )
+        raise
+    post_context = ProtocolHookContext(
+        hook_type=ProtocolHookTypes.POST_ASSISTANT_TURN_PARSING,
+        runtime_state=base_state,
+        session_data=dict(session_data or {}),
+        raw_message=raw_text,
+        parsed_message=turn,
+    )
+    registry.execute_hooks(ProtocolHookTypes.POST_ASSISTANT_TURN_PARSING, post_context)
+    return turn
 
 
 def find_first_tool_call(steps: Sequence[Step]) -> Optional[ToolCallPayload]:

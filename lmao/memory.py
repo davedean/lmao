@@ -7,6 +7,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, cast
 
 from .debug_log import DebugLogger
+from .hooks import (
+    ErrorHookContext,
+    ErrorHookTypes,
+    LoggingHookContext,
+    LoggingHookTypes,
+    MemoryHookContext,
+    MemoryHookTypes,
+    get_global_hook_registry,
+)
 from .llm import LLMClient, ProviderName, estimate_message_tokens
 from .protocol import (
     EndStep,
@@ -162,7 +171,18 @@ def compact_messages_if_needed(
     if trigger_tokens <= 0 or target_tokens <= 0:
         return
     start = time.perf_counter()
+    hook_registry = get_global_hook_registry()
     current_tokens = estimate_message_tokens(messages)
+    hook_registry.execute_hooks(
+        LoggingHookTypes.ON_MEMORY_ESTIMATE,
+        LoggingHookContext(
+            hook_type=LoggingHookTypes.ON_MEMORY_ESTIMATE,
+            runtime_state={"current_tokens": current_tokens},
+            log_level="debug",
+            log_message="memory estimate",
+            log_source="memory",
+        ),
+    )
     if current_tokens <= trigger_tokens:
         if debug_logger:
             elapsed_ms = (time.perf_counter() - start) * 1000.0
@@ -171,28 +191,60 @@ def compact_messages_if_needed(
                 f"elapsed_ms={elapsed_ms:.2f} dropped=0 prompt_tokens={current_tokens} target={target_tokens}",
             )
         return
+    hook_registry.execute_hooks(
+        MemoryHookTypes.MEMORY_COMPACT_START,
+        MemoryHookContext(
+            hook_type=MemoryHookTypes.MEMORY_COMPACT_START,
+            runtime_state={"trigger_tokens": trigger_tokens, "target_tokens": target_tokens},
+            messages=list(messages),
+            original_messages=list(messages),
+            current_token_count=current_tokens,
+            target_token_count=target_tokens,
+        ),
+    )
     dropped = 0
-    while current_tokens > target_tokens:
-        idx = _next_droppable_index(messages, pinned_message_ids, last_user_message)
-        if idx is None:
-            break
-        removed = messages.pop(idx)
-        dropped += 1
-        if debug_logger:
-            preview = _preview_text_for_log(removed.get("content"))
-            debug_logger.log("memory.compact.drop", f"role={removed.get('role')} idx={idx} preview={preview}")
-        current_tokens = estimate_message_tokens(messages)
-    if debug_logger:
+    try:
+        while current_tokens > target_tokens:
+            idx = _next_droppable_index(messages, pinned_message_ids, last_user_message)
+            if idx is None:
+                break
+            removed = messages.pop(idx)
+            dropped += 1
+            if debug_logger:
+                preview = _preview_text_for_log(removed.get("content"))
+                debug_logger.log(
+                    "memory.compact.drop", f"role={removed.get('role')} idx={idx} preview={preview}"
+                )
+            current_tokens = estimate_message_tokens(messages)
+    except Exception as exc:
+        hook_registry.execute_hooks(
+            ErrorHookTypes.ON_MEMORY_COMPACT_ERROR,
+            ErrorHookContext(
+                hook_type=ErrorHookTypes.ON_MEMORY_COMPACT_ERROR,
+                runtime_state={"dropped": dropped},
+                error_type="MemoryCompactionError",
+                error_message=str(exc),
+                error_exception=exc,
+            ),
+        )
+        raise
+    if debug_logger and dropped:
         elapsed_ms = (time.perf_counter() - start) * 1000.0
-        if dropped:
-            debug_logger.log(
-                "memory.compact",
-                f"dropped={dropped} prompt_tokens={current_tokens} target={target_tokens}",
-            )
         debug_logger.log(
             "memory.compact.timing",
             f"elapsed_ms={elapsed_ms:.2f} dropped={dropped} prompt_tokens={current_tokens} target={target_tokens}",
         )
+    hook_registry.execute_hooks(
+        MemoryHookTypes.MEMORY_COMPACT_END,
+        MemoryHookContext(
+            hook_type=MemoryHookTypes.MEMORY_COMPACT_END,
+            runtime_state={"dropped": dropped},
+            messages=list(messages),
+            original_messages=list(messages),
+            current_token_count=current_tokens,
+            target_token_count=target_tokens,
+        ),
+    )
 
 
 def _next_droppable_index(
@@ -262,6 +314,17 @@ def aggressive_compact_messages(
 ) -> None:
     if not messages:
         return
+    hook_registry = get_global_hook_registry()
+    original_messages = list(messages)
+    hook_registry.execute_hooks(
+        MemoryHookTypes.MEMORY_COMPACT_START,
+        MemoryHookContext(
+            hook_type=MemoryHookTypes.MEMORY_COMPACT_START,
+            runtime_state={"strategy": "aggressive"},
+            messages=list(messages),
+            original_messages=original_messages,
+        ),
+    )
     preserved: List[Dict[str, str]] = [messages[0]]
     seen: Set[int] = {id(messages[0])}
     for message in messages:
@@ -274,6 +337,15 @@ def aggressive_compact_messages(
     messages[:] = preserved
     if debug_logger:
         debug_logger.log("memory.compact.aggressive", f"retained={len(preserved)} messages")
+    hook_registry.execute_hooks(
+        MemoryHookTypes.MEMORY_COMPACT_END,
+        MemoryHookContext(
+            hook_type=MemoryHookTypes.MEMORY_COMPACT_END,
+            runtime_state={"strategy": "aggressive"},
+            messages=list(messages),
+            original_messages=original_messages,
+        ),
+    )
 
 
 def is_context_length_error(message: str) -> bool:

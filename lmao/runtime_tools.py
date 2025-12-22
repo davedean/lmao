@@ -8,6 +8,7 @@ from .debug_log import DebugLogger
 from .llm import LLMClient
 from .memory import MemoryState
 from .plugins import PluginTool
+from .hooks import HookRegistry
 
 RuntimeToolHandler = Callable[["RuntimeContext", str, Any, Optional[dict]], str]
 
@@ -23,7 +24,10 @@ class RuntimeTool:
     allow_in_read_only: bool = True
     allow_in_normal: bool = True
     allow_in_yolo: bool = True
-    handler: RuntimeToolHandler = lambda *_args, **_kwargs: ""  # overwritten in registry
+    visible_to_agent: bool = True
+    handler: RuntimeToolHandler = (
+        lambda *_args, **_kwargs: ""
+    )  # overwritten in registry
 
 
 @dataclass(frozen=True)
@@ -38,9 +42,56 @@ class RuntimeContext:
     headless: bool = False
     debug_logger: Optional[DebugLogger] = None
     memory_state: Optional[MemoryState] = None
+    hook_registry: Optional[HookRegistry] = None
+
+    def call_tool_internal(
+        self,
+        tool_name: str,
+        target: str = "",
+        args: Any = None,
+        meta: Optional[Dict[str, Any]] = None,
+        runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
+    ) -> str:
+        """
+        Call a tool internally without exposing it to agent.
+
+        This helper can call both plugin and runtime tools regardless of their visibility.
+        Used by hooks and internal systems to execute hidden tools.
+
+        Args:
+            tool_name: Name of tool to call
+            target: Tool target (optional)
+            args: Tool arguments (optional)
+            meta: Tool metadata (optional)
+            runtime_tools: Optional runtime tools registry (built if not provided)
+        """
+        from .tool_parsing import ToolCall
+        from .tool_dispatch import run_tool
+        from .runtime_tools import build_runtime_tool_registry
+
+        tool_call = ToolCall(tool=tool_name, target=target, args=args or "", meta=meta)
+
+        # Build runtime tools if not available externally
+        if runtime_tools is None:
+            runtime_tools = build_runtime_tool_registry()
+
+        return run_tool(
+            tool_call,
+            base=self.base,
+            extra_roots=self.extra_roots,
+            skill_roots=self.skill_roots,
+            yolo_enabled=self.yolo_enabled,
+            read_only=self.read_only,
+            plugin_tools=self.plugin_tools,
+            runtime_tools=runtime_tools,
+            runtime_context=self,
+            debug_logger=self.debug_logger,
+        )
 
 
-def runtime_tool_allowed(tool: RuntimeTool, *, read_only: bool, yolo_enabled: bool) -> bool:
+def runtime_tool_allowed(
+    tool: RuntimeTool, *, read_only: bool, yolo_enabled: bool
+) -> bool:
     if read_only:
         return tool.allow_in_read_only
     if yolo_enabled:

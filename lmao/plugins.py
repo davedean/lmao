@@ -10,6 +10,7 @@ from types import ModuleType
 from typing import Any, Callable, Dict, Iterable, List, Optional, cast
 
 from .debug_log import DebugLogger
+from .hooks import HookRegistry
 
 PLUGIN_API_VERSION = "1"
 
@@ -30,6 +31,7 @@ class PluginTool:
     always_confirm: bool
     handler: Callable[..., str]
     path: Path
+    visible_to_agent: bool = True
 
 
 def get_discovered_tool_registry() -> Dict[str, "PluginTool"]:
@@ -76,6 +78,10 @@ def _validate_manifest(manifest: Dict[str, Any]) -> Optional[str]:
         manifest.get("always_confirm"), bool
     ):
         return "always_confirm must be a boolean when provided"
+    if manifest.get("visible_to_agent", None) is not None and not isinstance(
+        manifest.get("visible_to_agent"), bool
+    ):
+        return "visible_to_agent must be a boolean when provided"
     return None
 
 
@@ -141,6 +147,7 @@ def _create_plugin_tool(
         always_confirm=bool(manifest.get("always_confirm", False)),
         handler=handler,
         path=path,
+        visible_to_agent=bool(manifest.get("visible_to_agent", True)),
     )
 
 
@@ -332,3 +339,138 @@ def discover_plugins(
     global _DISCOVERED_TOOL_REGISTRY
     _DISCOVERED_TOOL_REGISTRY = dict(plugins)
     return plugins
+
+
+def discover_plugin_hooks(
+    plugin_dirs: Iterable[Path],
+    base: Path,
+    hook_registry: HookRegistry,
+    debug_logger: Optional[DebugLogger] = None,
+    allow_outside_base: bool = False,
+) -> None:
+    for directory in plugin_dirs:
+        try:
+            resolved_dir = directory.expanduser().resolve()
+        except Exception:
+            if debug_logger:
+                debug_logger.log("plugin.hook_dir_error", f"path={directory}")
+            continue
+        if not resolved_dir.exists() or not resolved_dir.is_dir():
+            if debug_logger:
+                debug_logger.log("plugin.hook_dir_missing", f"path={resolved_dir}")
+            continue
+        for plugin_path in resolved_dir.rglob("tool.py"):
+            try:
+                resolved = plugin_path.resolve()
+                if not allow_outside_base:
+                    resolved.relative_to(base)
+            except Exception:
+                if debug_logger:
+                    debug_logger.log(
+                        "plugin.hook_skip", f"path_outside_base={plugin_path}"
+                    )
+                continue
+            module = _load_module(resolved)
+            if module is None:
+                if debug_logger:
+                    debug_logger.log("plugin.hook_load_error", f"path={resolved}")
+                continue
+            _register_module_hooks(
+                module, resolved, hook_registry, debug_logger=debug_logger
+            )
+
+
+def _register_module_hooks(
+    module: ModuleType,
+    plugin_path: Path,
+    hook_registry: HookRegistry,
+    debug_logger: Optional[DebugLogger] = None,
+) -> None:
+    hook_specs = []
+    module_hooks = getattr(module, "HOOKS", None)
+    if isinstance(module_hooks, dict):
+        hook_specs.append(("module", module_hooks))
+
+    manifest = getattr(module, "PLUGIN", None)
+    if isinstance(manifest, dict) and manifest.get("hooks"):
+        hook_specs.append((manifest.get("name", "plugin"), manifest.get("hooks")))
+
+    multi_manifests = getattr(module, "PLUGINS", None)
+    if isinstance(multi_manifests, list):
+        for idx, item in enumerate(multi_manifests):
+            if not isinstance(item, dict):
+                continue
+            hooks = item.get("hooks")
+            if hooks:
+                hook_specs.append((item.get("name", f"plugin_{idx}"), hooks))
+
+    for plugin_name, hooks in hook_specs:
+        _register_hook_mapping(
+            hooks,
+            module,
+            hook_registry,
+            plugin_name=str(plugin_name),
+            plugin_path=plugin_path,
+            debug_logger=debug_logger,
+        )
+
+
+def _register_hook_mapping(
+    hooks: Any,
+    module: ModuleType,
+    hook_registry: HookRegistry,
+    *,
+    plugin_name: str,
+    plugin_path: Path,
+    debug_logger: Optional[DebugLogger] = None,
+) -> None:
+    if not isinstance(hooks, dict):
+        if debug_logger:
+            debug_logger.log(
+                "plugin.hook_invalid", f"path={plugin_path} error=hooks must be a dict"
+            )
+        return
+    for hook_type, entries in hooks.items():
+        for hook_spec in _iter_hook_specs(entries):
+            hook_name = hook_spec["name"]
+            hook_func = getattr(module, hook_name, None)
+            if not callable(hook_func):
+                if debug_logger:
+                    debug_logger.log(
+                        "plugin.hook_missing",
+                        f"path={plugin_path} hook={hook_type} missing={hook_name}",
+                    )
+                continue
+            hook_registry.register(
+                str(hook_type),
+                hook_func,
+                priority=hook_spec["priority"],
+                name=hook_name,
+                plugin_name=plugin_name,
+                plugin_path=str(plugin_path),
+            )
+            if debug_logger:
+                debug_logger.log(
+                    "plugin.hook_registered",
+                    f"path={plugin_path} plugin={plugin_name} hook={hook_type} name={hook_name}",
+                )
+
+
+def _iter_hook_specs(entries: Any) -> Iterable[Dict[str, Any]]:
+    if entries is None:
+        return []
+    if isinstance(entries, (str, dict)):
+        entries = [entries]
+    if not isinstance(entries, (list, tuple)):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    for entry in entries:
+        if isinstance(entry, str):
+            normalized.append({"name": entry, "priority": 0})
+        elif isinstance(entry, dict):
+            name = entry.get("name") or entry.get("func") or entry.get("callable")
+            if not name:
+                continue
+            priority = entry.get("priority", 0)
+            normalized.append({"name": str(name), "priority": int(priority)})
+    return normalized

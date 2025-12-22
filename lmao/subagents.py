@@ -7,7 +7,12 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 from .context import build_tool_prompt
 from .llm import LLMCallResult, LLMClient, LLMCallStats
 from .plugins import PluginTool
-from .protocol import ProtocolError, collect_steps, collect_tool_calls, parse_assistant_turn
+from .protocol import (
+    ProtocolError,
+    collect_steps,
+    collect_tool_calls,
+    parse_assistant_turn_with_hooks,
+)
 from .tool_dispatch import json_error, json_success, run_tool
 from .tool_parsing import ToolCall
 
@@ -124,7 +129,9 @@ def run_subagent_one_shot(
         assistant_reply = result.content
 
         try:
-            turn_obj = parse_assistant_turn(assistant_reply, allowed_tools=allowed_tools)
+            turn_obj = parse_assistant_turn_with_hooks(
+                assistant_reply, allowed_tools=allowed_tools
+            )
         except ProtocolError as exc:
             invalid_replies += 1
             messages.append(
@@ -161,7 +168,7 @@ def run_subagent_one_shot(
                 read_only=read_only,
                 plugin_tools=plugin_tools,
                 runtime_tools=None,
-                runtime_context=None,
+                runtime_context=runtime_ctx,
                 debug_logger=debug_logger,
             )
             messages.append({"role": "user", "content": f"LOOP: Tool result: {tool_result}"})

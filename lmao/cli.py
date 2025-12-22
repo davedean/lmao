@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import warnings
 from pathlib import Path
 from typing import Optional, cast
 
@@ -163,14 +164,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run without interactive prompts (headless runtime mode)",
     )
-    parser.add_argument("--yolo", action="store_true", help="Legacy: enable yolo mode (use --mode yolo instead)")
+    parser.add_argument("--yolo", action="store_true", help="Deprecated: use --mode yolo instead")
     parser.add_argument("--debug", action="store_true", help="Enable verbose debug logging to debug.log")
     parser.add_argument(
         "--error-log",
         metavar="PATH",
         help="Write tool failure logs to PATH (default: error.log in workdir)",
     )
-    parser.add_argument("--read-only", action="store_true", help="Legacy: disable destructive plugins (use --mode readonly instead)")
     return parser
 
 
@@ -313,17 +313,28 @@ def main() -> None:
     if policy_truncate_chars <= 0:
         policy_truncate_chars = 2000
 
-    mode_value = args.mode or config.mode or "normal"
-    mode = mode_value.lower()
+    if args.mode and args.yolo:
+        parser.error("Conflicting mode flags: use --mode without --yolo.")
+
+    mode_value: Optional[str]
+    if args.mode:
+        mode_value = args.mode
+    elif args.yolo:
+        warnings.warn(
+            "--yolo is deprecated; use --mode yolo instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        mode_value = "yolo"
+    else:
+        mode_value = config.mode or "normal"
+
+    mode = (mode_value or "normal").lower()
     mode_read_only = mode in ("ro", "readonly", "read-only")
     mode_yolo = mode == "yolo"
     headless_mode = args.headless or bool(config.headless)
-    if mode != "normal" and (args.read_only or args.yolo):
-        parser.error("Use --mode without --read-only/--yolo; the new flag replaces the legacy ones.")
-    read_only = mode_read_only or (mode == "normal" and args.read_only)
-    yolo_enabled = mode_yolo or (mode == "normal" and args.yolo)
-    if read_only and yolo_enabled:
-        parser.error("Cannot enable both read-only and yolo modes.")
+    read_only = mode_read_only
+    yolo_enabled = mode_yolo
 
     workdir_value = args.workdir or config.workdir
     base_dir = (

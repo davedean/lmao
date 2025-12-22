@@ -108,7 +108,7 @@ log_path = /tmp/lmao-debug.log
         settings = resolve_provider_settings(
             provider="lmstudio",
             cli_endpoint="http://cli-lm",
-            cli_model=None,
+            cli_model="cli-model",
             config=config,
             env=env,
             lmstudio_default_endpoint="http://default-lm",
@@ -116,7 +116,33 @@ log_path = /tmp/lmao-debug.log
             openrouter_default_endpoint="https://default-openrouter",
         )
         self.assertEqual("http://cli-lm", settings.endpoint)
+        self.assertEqual("cli-model", settings.model)
+
+        settings = resolve_provider_settings(
+            provider="lmstudio",
+            cli_endpoint=None,
+            cli_model=None,
+            config=config,
+            env=env,
+            lmstudio_default_endpoint="http://default-lm",
+            lmstudio_default_model="default-model",
+            openrouter_default_endpoint="https://default-openrouter",
+        )
+        self.assertEqual("http://env-lm", settings.endpoint)
         self.assertEqual("env-model", settings.model)
+
+        settings = resolve_provider_settings(
+            provider="openrouter",
+            cli_endpoint=None,
+            cli_model="cli-or-model",
+            config=config,
+            env=env,
+            lmstudio_default_endpoint="http://default-lm",
+            lmstudio_default_model="default-model",
+            openrouter_default_endpoint="https://default-openrouter",
+        )
+        self.assertEqual("https://cfg-openrouter", settings.endpoint)
+        self.assertEqual("cli-or-model", settings.model)
 
         settings = resolve_provider_settings(
             provider="openrouter",

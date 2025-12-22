@@ -100,8 +100,8 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 
 ## CLI Flags (excerpt)
 - Core: `--provider`, `--endpoint`, `--model`, `--temperature`, `--top-p`, `--max-tokens`, `--workdir`
-- OpenRouter free models: `--free` (equivalent to `--model free`) enables automatic selection of a free tier model, obeying `free_default_model`/`free_blacklist` preferences and selecting from a high-scoring shortlist with weighted randomness.
-- Safety: `--mode yolo` (opt into risky flows/plugins) or `--mode readonly` (disable writes/moves/git/bash and plugins that opt out of read-only); legacy `--yolo`/`--read-only` remain for compatibility
+- OpenRouter free models: `--free` (equivalent to `--model free`) enables automatic selection of a free tier model, obeying `free_default_model`/`free_blacklist` preferences and selecting from a high-scoring shortlist with weighted randomness. (Only valid with `--provider openrouter`.)
+- Safety: `--mode yolo` (opt into risky flows/plugins) or `--mode readonly` (disable writes/moves/git/bash and plugins that opt out of read-only). `--yolo` remains as a deprecated alias.
 - Extensibility: user-specified plugin directories are planned but not yet supported; current runs load the shipped plugins from `lmao/tools/` (inside the installed package).
 - Loop control: `--max-turns`, `--silent-tools`, `--max-tool-lines`, `--max-tool-chars`
 - Output: `--no-stats` (hide token/latency/bytes stats in the prompt/output)
@@ -110,6 +110,9 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory (override the destination with `[debug]` `log_path`, relative paths are resolved under the working directory)
 - Error logging: `--error-log PATH` writes tool failure records to a JSONL file (default: `error.log` in the working directory; configurable via `[errors]` `log_path`).
 - Config: `--config PATH`, `--no-config`, `--print-config` (print the resolved defaults without secrets), `--config-init` (write the default config if missing)
+
+Config precedence:
+- CLI flags override environment variables, which override `lmao.conf`.
 
 Environment defaults:
 - LM Studio: `LM_STUDIO_URL`, `LM_STUDIO_MODEL`

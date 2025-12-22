@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 from .plugins import PluginTool
@@ -259,11 +260,26 @@ def build_system_message(
         runtime_tools=runtime_tools,
         headless=headless,
     )
+    now = datetime.now().astimezone()
+    tz_name = now.tzname() or "local"
+    tz_offset = now.strftime("%z")
+    mode = "yolo" if yolo_enabled else "read-only" if read_only else "normal"
+    startup_capsule = "\n".join(
+        [
+            "Startup capsule:",
+            f"- Date: {now.date().isoformat()} (local time; real-world).",
+            f"- Timezone: {tz_name} ({tz_offset}).",
+            f"- Working directory: {workdir}.",
+            f"- Repo root: {notes.repo_root}.",
+            f"- Mode: {mode}; headless: {headless}.",
+        ]
+    )
     content = (
         f"{tool_prompt}\n"
         "Startup: the runtime will call `policy` once before your first response and include the tool result.\n"
         "Note: `policy` returns an excerpt by default; call it again with offset/limit (or truncate=false) to see more.\n"
         "Call `skills_guide` only when the user asks about skills or requests skill creation/usage.\n"
+        f"{startup_capsule}\n"
     )
     if debug:
         content = (

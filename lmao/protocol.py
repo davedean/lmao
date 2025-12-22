@@ -119,8 +119,14 @@ def _wrap_single_step(obj: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> AssistantTurn:
+def parse_assistant_turn(
+    raw_text: str,
+    allowed_tools: Sequence[str],
+    known_tools: Optional[Sequence[str]] = None,
+) -> AssistantTurn:
     acceptable_types = {"assistant_turn", "think", "tool_call", "message", "end"}
+    allowed_set = set(allowed_tools)
+    known_set = set(known_tools) if known_tools is not None else allowed_set
     obj: Optional[Dict[str, Any]] = None
     first_loaded: Optional[Dict[str, Any]] = None
     first_step_obj: Optional[Dict[str, Any]] = None
@@ -145,7 +151,14 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
         obj = first_loaded if first_loaded is not None else _load_jsonish_dict(raw_text)
     if obj.get("type") != "assistant_turn":
         # Back-compat / model convenience: accept a single step dict and wrap it.
-        if obj.get("type") in {"think", "tool_call", "message", "end"} or obj.get("type") in set(allowed_tools):
+        step_type = obj.get("type")
+        if (
+            step_type in {"think", "tool_call", "message", "end"}
+            or step_type in allowed_set
+            or step_type in known_set
+        ):
+            obj = _wrap_single_step(obj)
+        elif isinstance(step_type, str) and step_type:
             obj = _wrap_single_step(obj)
         else:
             raise ProtocolError("assistant_turn.type must be 'assistant_turn'")
@@ -196,8 +209,10 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
         if step_type == "tool_call":
             call_obj = _require_dict(step_obj.get("call"), f"steps[{idx}].call")
             tool = _require_str(call_obj.get("tool", ""), f"steps[{idx}].call.tool")
-            if tool not in set(allowed_tools):
-                raise ProtocolError(f"steps[{idx}].call.tool '{tool}' is not allowed")
+            if tool not in allowed_set:
+                if tool in known_set:
+                    raise ProtocolError(f"steps[{idx}].call.tool '{tool}' is not allowed")
+                raise ProtocolError(f"steps[{idx}].call.tool '{tool}' is not found")
             target = str(call_obj.get("target", "") or "")
             call_meta_val = call_obj.get("meta", None)
             call_meta: Optional[Dict[str, Any]] = None
@@ -223,7 +238,7 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
 
         # Back-compat / model convenience: allow direct tool steps (type == tool name) for any allowed tool.
         # Example: {"type":"write","target":"a.txt","args":"content"}.
-        if step_type in set(allowed_tools):
+        if step_type in allowed_set:
             tool = step_type
             target = str(step_obj.get("target", "") or "")
             direct_meta_val = step_obj.get("meta", None)
@@ -243,7 +258,9 @@ def parse_assistant_turn(raw_text: str, allowed_tools: Sequence[str]) -> Assista
             )
             continue
 
-        raise ProtocolError(f"unsupported step type '{step_type}' at steps[{idx}]")
+        if step_type in known_set:
+            raise ProtocolError(f"steps[{idx}].type '{step_type}' is not allowed")
+        raise ProtocolError(f"steps[{idx}].type '{step_type}' is not found")
 
     turn_val = obj.get("turn")
     turn: Optional[int] = None
@@ -260,6 +277,7 @@ def parse_assistant_turn_with_hooks(
     raw_text: str,
     allowed_tools: Sequence[str],
     *,
+    known_tools: Optional[Sequence[str]] = None,
     hook_registry=None,
     runtime_state: Optional[Dict[str, Any]] = None,
     session_data: Optional[Dict[str, Any]] = None,
@@ -267,6 +285,8 @@ def parse_assistant_turn_with_hooks(
     registry = hook_registry or get_global_hook_registry()
     base_state = dict(runtime_state or {})
     base_state.update({"allowed_tools": list(allowed_tools)})
+    if known_tools is not None:
+        base_state.update({"known_tools": list(known_tools)})
     context = ProtocolHookContext(
         hook_type=ProtocolHookTypes.PRE_ASSISTANT_TURN_PARSING,
         runtime_state=base_state,
@@ -277,7 +297,11 @@ def parse_assistant_turn_with_hooks(
     if pre_result.modified_context and pre_result.modified_context.raw_message is not None:
         raw_text = pre_result.modified_context.raw_message
     try:
-        turn = parse_assistant_turn(raw_text, allowed_tools=allowed_tools)
+        turn = parse_assistant_turn(
+            raw_text,
+            allowed_tools=allowed_tools,
+            known_tools=known_tools,
+        )
     except ProtocolError as exc:
         error_context = ProtocolHookContext(
             hook_type=ProtocolHookTypes.ON_PROTOCOL_ERROR,

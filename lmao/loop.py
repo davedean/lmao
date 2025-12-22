@@ -361,6 +361,7 @@ def run_agent_turn(
             turn_obj = parse_assistant_turn_with_hooks(
                 assistant_reply,
                 allowed_tools=allowed_tools,
+                known_tools=known_tools,
                 hook_registry=hook_registry,
                 runtime_state={"turn": current_turn},
             )
@@ -463,7 +464,11 @@ def run_agent_turn(
         if tool_call_payloads:
             sanitized_reply = _tool_only_reply(turn_obj)
         else:
-            sanitized_reply = sanitize_assistant_reply(assistant_reply, allowed_tools)
+            sanitized_reply = sanitize_assistant_reply(
+                assistant_reply,
+                allowed_tools,
+                known_tools=known_tools,
+            )
         if turn_obj.steps:
             messages.append({"role": "assistant", "content": sanitized_reply})
         if headless_input_requested:
@@ -677,8 +682,13 @@ def run_loop(
     if debug_logger and plugins:
         debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
     runtime_tools = build_runtime_tool_registry()
-    allowed_tools = get_allowed_tools(read_only=read_only, yolo_enabled=yolo_enabled, plugins=list(plugins.values()))
+    allowed_tools = get_allowed_tools(
+        read_only=read_only,
+        yolo_enabled=yolo_enabled,
+        plugins=list(plugins.values()),
+    )
     allowed_tools = list(allowed_tools) + sorted(runtime_tools.keys())
+    known_tools = sorted(set(list(plugins.keys()) + list(runtime_tools.keys())))
     mode_label = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
     if headless:
         mode_label += " (headless)"

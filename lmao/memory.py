@@ -46,10 +46,18 @@ class MemoryState:
     last_user_message: Optional[Dict[str, str]] = None
 
 
-def sanitize_assistant_reply(reply: str, allowed_tools: Sequence[str]) -> str:
+def sanitize_assistant_reply(
+    reply: str,
+    allowed_tools: Sequence[str],
+    known_tools: Optional[Sequence[str]] = None,
+) -> str:
     """Remove think steps when storing assistant history and keep the rest intact."""
     try:
-        turn = parse_assistant_turn(reply, allowed_tools=allowed_tools)
+        turn = parse_assistant_turn(
+            reply,
+            allowed_tools=allowed_tools,
+            known_tools=known_tools,
+        )
     except ProtocolError:
         return reply
     cleaned_steps: List[Dict[str, Any]] = []

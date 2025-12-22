@@ -123,6 +123,7 @@ def run_subagent_one_shot(
     invalid_replies = 0
     tool_calls_total = 0
 
+    known_tools = sorted(plugin_tools.keys())
     for turn in range(1, max(1, int(max_turns)) + 1):
         result: LLMCallResult = client.call(messages)
         last_stats = result.stats
@@ -130,7 +131,9 @@ def run_subagent_one_shot(
 
         try:
             turn_obj = parse_assistant_turn_with_hooks(
-                assistant_reply, allowed_tools=allowed_tools
+                assistant_reply,
+                allowed_tools=allowed_tools,
+                known_tools=known_tools,
             )
         except ProtocolError as exc:
             invalid_replies += 1

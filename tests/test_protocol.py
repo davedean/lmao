@@ -110,6 +110,38 @@ class ProtocolParsingTests(TestCase):
         with self.assertRaises(ProtocolError):
             parse_assistant_turn(raw, allowed_tools=["read"])
 
+    def test_distinguishes_unknown_tool(self) -> None:
+        raw = json.dumps(
+            {
+                "type": "assistant_turn",
+                "version": "1",
+                "steps": [{"type": "tool_call", "call": {"tool": "ghost", "target": "a", "args": ""}}],
+            }
+        )
+        with self.assertRaises(ProtocolError) as exc:
+            parse_assistant_turn(
+                raw,
+                allowed_tools=["read"],
+                known_tools=["read", "write"],
+            )
+        self.assertIn("not found", str(exc.exception))
+
+    def test_distinguishes_disallowed_tool(self) -> None:
+        raw = json.dumps(
+            {
+                "type": "assistant_turn",
+                "version": "1",
+                "steps": [{"type": "tool_call", "call": {"tool": "write", "target": "a", "args": ""}}],
+            }
+        )
+        with self.assertRaises(ProtocolError) as exc:
+            parse_assistant_turn(
+                raw,
+                allowed_tools=["read"],
+                known_tools=["read", "write"],
+            )
+        self.assertIn("not allowed", str(exc.exception))
+
     def test_allows_multiple_task_tool_steps(self) -> None:
         raw = json.dumps(
             {

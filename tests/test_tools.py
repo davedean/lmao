@@ -113,6 +113,20 @@ class ToolSafetyTests(TestCase):
         self.assertFalse(payload["success"])
         self.assertIn("read-only", payload["error"])
 
+    def test_run_tool_unknown_tool_is_not_found(self) -> None:
+        call = ToolCall(tool="definitely_not_a_tool", target="", args="")
+        output = run_tool(
+            call,
+            base=self.base,
+            extra_roots=[],
+            skill_roots=[],
+            yolo_enabled=False,
+            plugin_tools=self.plugins,
+        )
+        payload = json.loads(output)
+        self.assertFalse(payload["success"])
+        self.assertIn("not found", payload["error"])
+
     def test_write_blocks_top_level_skill_file(self) -> None:
         skills_root = self.base / "skills"
         skills_root.mkdir()

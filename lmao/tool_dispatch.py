@@ -262,9 +262,9 @@ def run_tool(
             hook_registry,
             ErrorHookTypes.ON_TOOL_VALIDATION_ERROR,
             tool_context,
-            f"unsupported tool '{tool}'",
+            f"tool '{tool}' not found",
         )
-        return json_error(tool, f"unsupported tool '{tool}'")
+        return json_error(tool, f"tool '{tool}' not found")
 
     path_context = tool_context.with_hook_type(ToolHookTypes.PRE_PATH_SAFETY_CHECK)
     path_result = hook_registry.execute_hooks(

@@ -199,13 +199,9 @@ def run_agent_turn(
         print(text, end=end)
 
     def _select_final_output(messages: Sequence[MessageStep]) -> str:
-        finals = [msg.content for msg in messages if msg.purpose == "final"]
-        if finals:
-            return "\n\n".join(finals)
-        cannot_finish = [msg.content for msg in messages if msg.purpose == MESSAGE_PURPOSE_CANNOT_FINISH]
-        if cannot_finish:
-            return "\n\n".join(cannot_finish)
-        return ""
+        if not messages:
+            return ""
+        return messages[-1].content
 
     def log_tool_failure(tool_call: ToolCall, output: str) -> None:
         if not error_logger:

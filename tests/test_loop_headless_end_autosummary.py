@@ -86,3 +86,42 @@ class HeadlessEndAutoSummaryTests(TestCase):
 
         self.assertTrue(ended)
         self.assertEqual(2, client.calls)
+
+    def test_quiet_outputs_most_recent_message_step(self) -> None:
+        client = _FakeClient(
+            replies=[
+                (
+                    '{"type":"assistant_turn","version":"2","steps":['
+                    '{"type":"message","purpose":"progress","content":"first"},'
+                    '{"type":"message","purpose":"final","content":"second"},'
+                    '{"type":"end","reason":"completed"}'
+                    "]}"
+                )
+            ]
+        )
+        base = Path(".").resolve()
+        messages = [{"role": "system", "content": "sys"}]
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            _, _, ended = run_agent_turn(
+                messages=messages,
+                client=client,  # type: ignore[arg-type]
+                turn=1,
+                last_user="hi",
+                base=base,
+                extra_roots=[],
+                skill_roots=[],
+                max_tool_output=(0, 0),
+                yolo_enabled=False,
+                read_only=False,
+                allowed_tools=[],
+                plugin_tools={},
+                runtime_tools={},
+                runtime_context=None,
+                show_stats=False,
+                quiet=True,
+                no_tools=False,
+                debug_logger=None,
+            )
+        self.assertTrue(ended)
+        self.assertEqual("second", stdout.getvalue().strip())

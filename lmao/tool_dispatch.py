@@ -140,7 +140,17 @@ def run_tool(
     if debug_logger:
         debug_logger.log(
             "tool.dispatch",
-            f"tool={tool} target={target!r} args={_format_args_for_prompt(args)!r} meta={meta!r} base={base} extra_roots={[str(r) for r in extra_roots]}",
+            {
+                "message": "tool dispatch",
+                "data": {
+                    "tool": tool,
+                    "target": target,
+                    "args": args,
+                    "meta": meta,
+                    "base": str(base),
+                    "extra_roots": [str(r) for r in extra_roots],
+                },
+            },
         )
 
     tool_context = ToolHookContext(
@@ -242,7 +252,13 @@ def run_tool(
             return rt.handler(runtime_context, target, args, meta)
         except Exception as exc:
             if debug_logger:
-                debug_logger.log("runtime_tool.error", f"tool={tool} error={exc}")
+                debug_logger.log(
+                    "runtime_tool.error",
+                    {
+                        "message": "runtime tool error",
+                        "data": {"tool": tool, "error": str(exc)},
+                    },
+                )
             _emit_error_hook(
                 hook_registry,
                 ErrorHookTypes.ON_TOOL_EXECUTION_ERROR,
@@ -291,7 +307,15 @@ def run_tool(
     except Exception as exc:
         if debug_logger:
             debug_logger.log(
-                "tool.error", f"tool={tool} target={target!r} path_escape_error={exc}"
+                "tool.error",
+                {
+                    "message": "tool error",
+                    "data": {
+                        "tool": tool,
+                        "target": target,
+                        "path_escape_error": str(exc),
+                    },
+                },
             )
         _emit_error_hook(
             hook_registry,
@@ -442,7 +466,11 @@ def run_tool(
     except Exception as exc:
         if debug_logger:
             debug_logger.log(
-                "plugin.error", f"tool={tool} path={plugin.path} error={exc}"
+                "plugin.error",
+                {
+                    "message": "plugin error",
+                    "data": {"tool": tool, "path": str(plugin.path), "error": str(exc)},
+                },
             )
         _emit_error_hook(
             hook_registry,

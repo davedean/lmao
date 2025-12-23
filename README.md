@@ -111,8 +111,8 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Tooling: `--no-tools` (disable tool exposure and execution)
 - Prompting: `--prompt-file` (seed long prompts), optional interactive prompt when the positional prompt is omitted
 - Headless runtime: `--headless` keeps the loop from prompting; pair it with an explicit prompt (or `default_prompt` in `lmao.conf`) so the agent can finish without clarification requests.
-- Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory (override the destination with `[debug]` `log_path`, relative paths are resolved under the working directory)
-- Error logging: `--error-log PATH` writes tool failure records to a JSONL file (default: `error.log` in the working directory; configurable via `[errors]` `log_path`).
+- Debugging: `--debug` writes JSONL loop/tool/model traces to `debug.log` in the working directory (override the destination with `[debug]` `log_path`, relative paths are resolved under the working directory).
+- Error logging: `--error-log PATH` writes tool failure records to JSONL (default: `error.log` in the working directory; configurable via `[errors]` `log_path`).
 - Config: `--config PATH`, `--no-config`, `--print-config` (print the resolved defaults without secrets), `--config-init` (write the default config if missing)
 
 Config precedence:

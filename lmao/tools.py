@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .path_safety import normalize_path_for_output, parse_line_range, safe_target_path
-from .text_utils import summarize_output
+from .text_utils import summarize_output, summarize_tool_args, summarize_tool_output
 from .tool_dispatch import (
     confirm_plugin_run,
     get_allowed_tools,
@@ -36,4 +36,6 @@ __all__ = [
     "run_tool",
     "safe_target_path",
     "summarize_output",
+    "summarize_tool_args",
+    "summarize_tool_output",
 ]

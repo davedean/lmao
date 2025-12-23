@@ -196,7 +196,15 @@ def compact_messages_if_needed(
             elapsed_ms = (time.perf_counter() - start) * 1000.0
             debug_logger.log(
                 "memory.compact.timing",
-                f"elapsed_ms={elapsed_ms:.2f} dropped=0 prompt_tokens={current_tokens} target={target_tokens}",
+                {
+                    "message": "memory compact timing",
+                    "data": {
+                        "elapsed_ms": round(elapsed_ms, 2),
+                        "dropped": 0,
+                        "prompt_tokens": current_tokens,
+                        "target_tokens": target_tokens,
+                    },
+                },
             )
         return
     hook_registry.execute_hooks(
@@ -221,7 +229,15 @@ def compact_messages_if_needed(
             if debug_logger:
                 preview = _preview_text_for_log(removed.get("content"))
                 debug_logger.log(
-                    "memory.compact.drop", f"role={removed.get('role')} idx={idx} preview={preview}"
+                    "memory.compact.drop",
+                    {
+                        "message": "memory compact drop",
+                        "data": {
+                            "role": removed.get("role"),
+                            "idx": idx,
+                            "preview": preview,
+                        },
+                    },
                 )
             current_tokens = estimate_message_tokens(messages)
     except Exception as exc:
@@ -240,7 +256,15 @@ def compact_messages_if_needed(
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         debug_logger.log(
             "memory.compact.timing",
-            f"elapsed_ms={elapsed_ms:.2f} dropped={dropped} prompt_tokens={current_tokens} target={target_tokens}",
+            {
+                "message": "memory compact timing",
+                "data": {
+                    "elapsed_ms": round(elapsed_ms, 2),
+                    "dropped": dropped,
+                    "prompt_tokens": current_tokens,
+                    "target_tokens": target_tokens,
+                },
+            },
         )
     hook_registry.execute_hooks(
         MemoryHookTypes.MEMORY_COMPACT_END,
@@ -344,7 +368,13 @@ def aggressive_compact_messages(
         seen.add(id(last_user_message))
     messages[:] = preserved
     if debug_logger:
-        debug_logger.log("memory.compact.aggressive", f"retained={len(preserved)} messages")
+        debug_logger.log(
+            "memory.compact.aggressive",
+            {
+                "message": "memory compact aggressive",
+                "data": {"retained": len(preserved)},
+            },
+        )
     hook_registry.execute_hooks(
         MemoryHookTypes.MEMORY_COMPACT_END,
         MemoryHookContext(

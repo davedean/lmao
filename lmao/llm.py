@@ -169,19 +169,37 @@ class LLMClient:
             summary = _summarize_messages_for_debug(messages, top_n=5)
             self.debug_logger.log(
                 "llm.request_stats",
-                (
-                    f"messages={summary['message_count']} "
-                    f"content_chars={summary['total_content_chars']} "
-                    f"content_bytes={summary['total_content_bytes']} "
-                    f"payload_bytes={len(data)} "
-                    f"prompt_tokens_est={prompt_tokens_est}"
-                ),
+                {
+                    "message": "llm request stats",
+                    "data": {
+                        "message_count": summary["message_count"],
+                        "content_chars": summary["total_content_chars"],
+                        "content_bytes": summary["total_content_bytes"],
+                        "payload_bytes": len(data),
+                        "prompt_tokens_est": prompt_tokens_est,
+                    },
+                },
             )
             self.debug_logger.log(
                 "llm.request_largest_messages",
-                json.dumps(summary["largest_messages"], ensure_ascii=False),
+                {
+                    "message": "llm request largest messages",
+                    "data": {"largest_messages": summary["largest_messages"]},
+                },
             )
-            self.debug_logger.log("llm.request", json.dumps(payload, ensure_ascii=False))
+            self.debug_logger.log(
+                "llm.request",
+                {
+                    "message": "llm request",
+                    "data": {
+                        "model": self.model,
+                        "temperature": self.temperature,
+                        "top_p": self.top_p,
+                        "max_tokens": self.max_tokens,
+                        "message_count": len(messages),
+                    },
+                },
+            )
 
         start = time.perf_counter()
         try:
@@ -190,11 +208,20 @@ class LLMClient:
         except urllib.error.HTTPError as exc:  # pragma: no cover - network error
             detail = exc.read().decode("utf-8", errors="ignore")
             if self.debug_logger:
-                self.debug_logger.log("llm.error", f"HTTP {exc.code}: {detail}")
+                self.debug_logger.log(
+                    "llm.error",
+                    {
+                        "message": "llm error",
+                        "data": {"status": exc.code, "detail": detail},
+                    },
+                )
             raise RuntimeError(f"HTTP {exc.code}: {detail}") from exc
         except urllib.error.URLError as exc:  # pragma: no cover - network error
             if self.debug_logger:
-                self.debug_logger.log("llm.error", f"URL error: {exc}")
+                self.debug_logger.log(
+                    "llm.error",
+                    {"message": "llm error", "data": {"detail": str(exc)}},
+                )
             raise RuntimeError(f"Failed to reach model endpoint: {exc}") from exc
         elapsed_s = time.perf_counter() - start
         body = raw_body.decode("utf-8", errors="replace")
@@ -229,13 +256,31 @@ class LLMClient:
                 is_estimate=is_estimate,
             )
             if self.debug_logger:
-                self.debug_logger.log("llm.response", content)
+                self.debug_logger.log(
+                    "llm.response",
+                    {
+                        "message": "llm response",
+                        "data": {"chars": len(content), "preview": content[:240]},
+                    },
+                )
                 self.debug_logger.log(
                     "llm.stats",
-                    f"elapsed_s={elapsed_s:.3f} prompt_tokens={prompt_tokens} completion_tokens={completion_tokens} total_tokens={total_tokens} estimate={is_estimate}",
+                    {
+                        "message": "llm stats",
+                        "data": {
+                            "elapsed_s": round(elapsed_s, 3),
+                            "prompt_tokens": prompt_tokens,
+                            "completion_tokens": completion_tokens,
+                            "total_tokens": total_tokens,
+                            "estimate": is_estimate,
+                        },
+                    },
                 )
             return LLMCallResult(content=content, stats=stats)
         except Exception as exc:  # pragma: no cover - defensive parsing
             if self.debug_logger:
-                self.debug_logger.log("llm.error", f"Unexpected response: {body}")
+                self.debug_logger.log(
+                    "llm.error",
+                    {"message": "llm error", "data": {"detail": f"Unexpected response: {body}"}},
+                )
             raise RuntimeError(f"Unexpected response: {body}") from exc

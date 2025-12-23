@@ -24,7 +24,7 @@ from .protocol import (
     collect_tool_calls,
     parse_assistant_turn_with_hooks,
 )
-from .tools import ToolCall, get_allowed_tools, run_tool, summarize_output
+from .tools import ToolCall, get_allowed_tools, run_tool, summarize_tool_args, summarize_tool_output
 from .plugins import PluginTool, discover_plugin_hooks, discover_plugins
 from .text_utils import truncate_text
 from .memory import (
@@ -244,7 +244,17 @@ def run_agent_turn(
             if not quiet:
                 emit(f"{COLOR_DIM}Reached max turns ({max_turns}); stopping.{COLOR_RESET}")
             if debug_logger:
-                debug_logger.log("loop.stop", f"reason=max_turns reached={max_turns}")
+                debug_logger.log(
+                    "loop.stop",
+                    {
+                        "message": "loop stop",
+                        "data": {
+                            "reason": "max_turns",
+                            "max_turns": max_turns,
+                            "turn": current_turn,
+                        },
+                    },
+                )
             return current_turn, last_stats, True
         headless_run = bool(runtime_context.headless) if runtime_context else False
         hook_registry = (
@@ -326,7 +336,10 @@ def run_agent_turn(
                     if debug_logger:
                         debug_logger.log(
                             "memory.compact.retry",
-                            "aggressive compaction triggered after context-length error",
+                            {
+                                "message": "memory compact retry",
+                                "data": {"reason": "context_length_error", "turn": current_turn},
+                            },
                         )
                     continue
                 raise
@@ -372,7 +385,17 @@ def run_agent_turn(
 
         empty_replies = 0
         if debug_logger:
-            debug_logger.log("assistant.reply", f"turn={current_turn} content={assistant_reply}")
+            debug_logger.log(
+                "assistant.reply",
+                {
+                    "message": "assistant reply",
+                    "data": {
+                        "turn": current_turn,
+                        "chars": len(assistant_reply),
+                        "preview": _truncate_preview(assistant_reply, max_lines=3, max_chars=240),
+                    },
+                },
+            )
 
         try:
             if no_tools and _reply_mentions_tool_call(assistant_reply):
@@ -595,7 +618,16 @@ def run_agent_turn(
                 if debug_logger:
                     debug_logger.log(
                         "tool.call",
-                        f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} meta={tool_call.meta!r}",
+                        {
+                            "message": "tool call",
+                            "data": {
+                                "turn": current_turn,
+                                "tool": tool_call.tool,
+                                "target": tool_call.target,
+                                "args": tool_call.args,
+                                "meta": tool_call.meta,
+                            },
+                        },
                     )
                 output = run_tool(
                     tool_call,
@@ -611,19 +643,32 @@ def run_agent_turn(
                 )
                 log_tool_failure(tool_call, output)
                 tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
-                last_tool_summary = summarize_output(output, max_lines=max_tool_output[0], max_chars=max_tool_output[1])
+                last_tool_summary = summarize_tool_output(
+                    output, max_lines=1, max_chars=max_tool_output[1]
+                )
                 if max_tool_output[1] > 0 and not quiet:
-                    args_repr = ""
-                    if tool_call.args not in ("", None, {}):
-                        args_repr = f" args: {tool_call.args!r}"
-                    tool_header = f"tool: {tool_call.tool}, {tool_call.target!r}{args_repr}"
-                    tool_result_body = indent(f"[tool result] {tool_header}\n{last_tool_summary}")
+                    args_repr = summarize_tool_args(tool_call.args)
+                    args_label = f" args: {args_repr}" if args_repr else ""
+                    tool_header = f"tool: {tool_call.tool}, {tool_call.target!r}{args_label}"
+                    tool_result_body = indent(
+                        f"[tool result] {tool_header} -> {last_tool_summary}"
+                    )
                     emit(f"{COLOR_DIM}{tool_result_body}{COLOR_RESET}\n", end="")
 
                 if debug_logger:
                     debug_logger.log(
                         "tool.output",
-                        f"turn={current_turn} tool={tool_call.tool} target={tool_call.target!r} args={tool_call.args!r} output={output}",
+                        {
+                            "message": "tool output",
+                            "data": {
+                                "turn": current_turn,
+                                "tool": tool_call.tool,
+                                "target": tool_call.target,
+                                "args": tool_call.args,
+                                "output_summary": summarize_tool_output(output, max_lines=1, max_chars=200),
+                                "output_chars": len(output),
+                            },
+                        },
                     )
                 is_pinned = should_pin_agents_tool_result(tool_call.tool, tool_call.target or "")
                 tool_result_content = (
@@ -700,10 +745,21 @@ def run_loop(
         ),
     )
     if debug_logger:
-        debug_logger.log("debug.enabled", f"writing debug logs to {debug_logger.path}")
+        debug_logger.log(
+            "debug.enabled",
+            {"message": "debug enabled", "data": {"path": str(debug_logger.path)}},
+        )
         debug_logger.log(
             "context",
-            f"workdir={base} yolo_enabled={yolo_enabled} read_only={read_only} headless={headless}",
+            {
+                "message": "context",
+                "data": {
+                    "workdir": str(base),
+                    "yolo_enabled": yolo_enabled,
+                    "read_only": read_only,
+                    "headless": headless,
+                },
+            },
         )
 
     notes = gather_context(base)
@@ -729,7 +785,15 @@ def run_loop(
         if debug_logger and plugins:
             debug_logger.log(
                 "plugins.loaded",
-                f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}",
+                {
+                    "message": "plugins loaded",
+                    "data": {
+                        "plugins": [
+                            {"name": name, "path": str(plugin.path)}
+                            for name, plugin in plugins.items()
+                        ]
+                    },
+                },
             )
         runtime_tools = build_runtime_tool_registry()
         allowed_tools = get_allowed_tools(
@@ -862,11 +926,17 @@ def run_loop(
             return
         if tool_name not in plugins:
             if debug_logger:
-                debug_logger.log("startup.prelude.skip", f"missing_tool={tool_name}")
+                debug_logger.log(
+                    "startup.prelude.skip",
+                    {"message": "startup prelude skip", "data": {"reason": "missing_tool", "tool": tool_name}},
+                )
             return
         if tool_name not in allowed_tools:
             if debug_logger:
-                debug_logger.log("startup.prelude.skip", f"tool_not_allowed={tool_name}")
+                debug_logger.log(
+                    "startup.prelude.skip",
+                    {"message": "startup prelude skip", "data": {"reason": "tool_not_allowed", "tool": tool_name}},
+                )
             return
         tool_args: object = ""
         if tool_name == "policy":
@@ -896,7 +966,16 @@ def run_loop(
             success = True
         if not success:
             if debug_logger:
-                debug_logger.log("startup.prelude.tool_error", f"tool={tool_name} output={output}")
+                debug_logger.log(
+                    "startup.prelude.tool_error",
+                    {
+                        "message": "startup prelude tool error",
+                        "data": {
+                            "tool": tool_name,
+                            "output_summary": summarize_tool_output(output, max_lines=1, max_chars=200),
+                        },
+                    },
+                )
             return
 
         tool_desc = f"tool '{tool_name}' on ''"
@@ -913,10 +992,25 @@ def run_loop(
         if pin_for_memory:
             memory_state.pinned_message_ids.add(id(tool_message))
         if debug_logger:
-            debug_logger.log("startup.prelude.tool", f"tool={tool_name} pinned={pin_for_memory}")
+            debug_logger.log(
+                "startup.prelude.tool",
+                {
+                    "message": "startup prelude tool",
+                    "data": {"tool": tool_name, "pinned": pin_for_memory},
+                },
+            )
 
     if debug_logger and initial_prompt is not None:
-        debug_logger.log("user.initial_prompt", initial_prompt)
+        debug_logger.log(
+            "user.initial_prompt",
+            {
+                "message": "user initial prompt",
+                "data": {
+                    "chars": len(initial_prompt),
+                    "preview": _truncate_preview(initial_prompt, max_lines=3, max_chars=240),
+                },
+            },
+        )
 
     if user_input is None:
         if headless:
@@ -928,7 +1022,17 @@ def run_loop(
             return
         user_input = result.text or ""
         if debug_logger:
-            debug_logger.log("user.input", f"turn={turn} content={user_input}")
+            debug_logger.log(
+                "user.input",
+                {
+                    "message": "user input",
+                    "data": {
+                        "turn": turn,
+                        "chars": len(user_input),
+                        "preview": _truncate_preview(user_input, max_lines=3, max_chars=240),
+                    },
+                },
+            )
 
     root_request: Optional[str] = None
 
@@ -937,7 +1041,13 @@ def run_loop(
             if not quiet:
                 print(f"Reached max turns ({max_turns}); stopping.")
             if debug_logger:
-                debug_logger.log("loop.stop", f"reason=max_turns reached={max_turns}")
+                debug_logger.log(
+                    "loop.stop",
+                    {
+                        "message": "loop stop",
+                        "data": {"reason": "max_turns", "max_turns": max_turns, "turn": turn},
+                    },
+                )
             _emit_shutdown()
             return
         if not user_input:
@@ -950,7 +1060,17 @@ def run_loop(
                 return
             user_input = result.text or ""
             if debug_logger:
-                debug_logger.log("user.input", f"turn={turn} content={user_input}")
+                debug_logger.log(
+                    "user.input",
+                    {
+                        "message": "user input",
+                        "data": {
+                            "turn": turn,
+                            "chars": len(user_input),
+                            "preview": _truncate_preview(user_input, max_lines=3, max_chars=240),
+                        },
+                    },
+                )
             continue
 
         if not user_input.strip():
@@ -971,7 +1091,17 @@ def run_loop(
         messages.append(user_message)
         memory_state.last_user_message = user_message
         if debug_logger:
-            debug_logger.log("user.input", f"turn={turn} content={user_input}")
+            debug_logger.log(
+                "user.input",
+                {
+                    "message": "user input",
+                    "data": {
+                        "turn": turn,
+                        "chars": len(user_input),
+                        "preview": _truncate_preview(user_input, max_lines=3, max_chars=240),
+                    },
+                },
+            )
         next_turn, last_prompt_stats, ended = run_agent_turn(
             messages,
             client=client,
@@ -1035,4 +1165,14 @@ def run_loop(
             _emit_shutdown()
             return
         if debug_logger and user_input is not None:
-            debug_logger.log("user.input", f"turn={turn} content={user_input}")
+            debug_logger.log(
+                "user.input",
+                {
+                    "message": "user input",
+                    "data": {
+                        "turn": turn,
+                        "chars": len(user_input),
+                        "preview": _truncate_preview(user_input, max_lines=3, max_chars=240),
+                    },
+                },
+            )

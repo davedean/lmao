@@ -184,3 +184,37 @@ class StartupPreludeTests(TestCase):
         joined = "\n".join(msg.get("content", "") for msg in client.last_messages)  # type: ignore[union-attr]
         self.assertIn("Tool result for tool 'policy' on ''", joined)
         self.assertIn("Tool result for tool 'skills_guide' on ''", joined)
+
+    def test_no_tools_includes_agents_without_policy_tool(self) -> None:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        base = Path(tmp.name).resolve()
+        (base / "AGENTS.md").write_text("repo instructions", encoding="utf-8")
+
+        built_in_plugins_dir = Path(__file__).resolve().parents[1] / "lmao" / "tools"
+        client = _CapturingClient(
+            '{"type":"assistant_turn","version":"1","steps":[{"type":"message","purpose":"final","content":"done"},{"type":"end"}]}'
+        )
+
+        with redirect_stdout(io.StringIO()):
+            run_loop(
+                initial_prompt="do the thing",
+                client=client,  # type: ignore[arg-type]
+                workdir=base,
+                max_tool_output=(0, 0),
+                max_turns=3,
+                silent_tools=True,
+                yolo_enabled=False,
+                read_only=False,
+                show_stats=False,
+                headless=True,
+                multiline=False,
+                plugin_dirs=[built_in_plugins_dir],
+                debug_logger=None,
+                no_tools=True,
+            )
+
+        joined = "\n".join(msg.get("content", "") for msg in client.last_messages)  # type: ignore[union-attr]
+        self.assertIn("Repository instructions (AGENTS.md)", joined)
+        self.assertIn("repo instructions", joined)
+        self.assertNotIn("Tool result for tool 'policy' on ''", joined)

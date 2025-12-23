@@ -25,12 +25,12 @@ class DebugLogger:
         on_log_result = registry.execute_hooks(LoggingHookTypes.ON_LOG_MESSAGE, context)
         if on_log_result.should_skip:
             return
-        if on_log_result.modified_context:
+        if on_log_result.modified_context and isinstance(on_log_result.modified_context, LoggingHookContext):
             context = on_log_result.modified_context
         pre_result = registry.execute_hooks(LoggingHookTypes.PRE_LOG_WRITE, context)
         if pre_result.should_skip:
             return
-        if pre_result.modified_context:
+        if pre_result.modified_context and isinstance(pre_result.modified_context, LoggingHookContext):
             context = pre_result.modified_context
         entry = f"{timestamp} [{event}] {context.log_message}".rstrip("\n") + "\n"
         try:

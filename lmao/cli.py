@@ -147,6 +147,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-turns", type=int, default=None, help="Maximum conversation turns before stopping")
     parser.add_argument("--silent-tools", action="store_true", help="Do not print tool outputs to console")
     parser.add_argument("--no-stats", action="store_true", help="Disable per-turn stats in console output")
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Only print the final answer (suppress intermediate output and headers)",
+    )
+    parser.add_argument(
+        "--no-tools",
+        action="store_true",
+        help="Disable tools entirely (agent cannot see or call tools)",
+    )
     parser.add_argument("--prompt-file", type=str, default=None, help="Read initial prompt from file")
     parser.add_argument(
         "--multiline",
@@ -189,6 +199,8 @@ def _config_summary(
     max_turns: Optional[int],
     silent_tools: bool,
     no_stats: bool,
+    quiet: bool,
+    no_tools: bool,
     multiline: bool,
     mode: str,
     headless_mode: bool,
@@ -218,6 +230,8 @@ def _config_summary(
         "max_turns": max_turns,
         "silent_tools": silent_tools,
         "no_stats": no_stats,
+        "quiet": quiet,
+        "no_tools": no_tools,
         "multiline": multiline,
         "mode": mode,
         "headless": headless_mode,
@@ -306,6 +320,8 @@ def main() -> None:
 
     silent_tools = args.silent_tools or bool(config.silent_tools)
     no_stats = args.no_stats or bool(config.no_stats)
+    quiet = args.quiet or bool(config.quiet)
+    no_tools = args.no_tools or bool(config.no_tools)
     multiline = args.multiline or bool(config.multiline)
 
     policy_truncate = config.policy_truncate if config.policy_truncate is not None else True
@@ -424,6 +440,8 @@ def main() -> None:
                 max_turns=max_turns,
                 silent_tools=silent_tools,
                 no_stats=no_stats,
+                quiet=quiet,
+                no_tools=no_tools,
                 multiline=multiline,
                 mode=mode,
                 headless_mode=headless_mode,
@@ -484,7 +502,7 @@ def main() -> None:
             silent_tools=silent_tools,
             yolo_enabled=yolo_enabled,
             read_only=read_only,
-            show_stats=not no_stats,
+            show_stats=not no_stats and not quiet,
             headless=headless_mode,
             multiline=multiline,
             plugin_dirs=[built_in_plugins_dir],
@@ -492,6 +510,8 @@ def main() -> None:
             error_logger=error_logger,
             policy_truncate=policy_truncate,
             policy_truncate_chars=policy_truncate_chars,
+            quiet=quiet,
+            no_tools=no_tools,
         )
     except KeyboardInterrupt:
         print("\nInterrupted by user", file=sys.stderr)

@@ -57,3 +57,20 @@ class CLIModeOptionsTests(TestCase):
                 main()
             self.assertEqual(2, exc.exception.code)
         run_loop.assert_not_called()
+
+    @patch("lmao.cli.run_loop")
+    @patch("lmao.cli.LLMClient")
+    def test_quiet_and_no_tools_flags(self, client_cls, run_loop) -> None:
+        config_result = ConfigLoadResult(Path("lmao.conf"), UserConfig(), None, True)
+        with patch(
+            "sys.argv",
+            ["lmao", "--quiet", "--no-tools", "--headless", "prompt"],
+        ), patch(
+            "lmao.cli.load_user_config",
+            return_value=config_result,
+        ):
+            main()
+        run_loop.assert_called_once()
+        kwargs = run_loop.call_args[1]
+        self.assertTrue(kwargs["quiet"])
+        self.assertTrue(kwargs["no_tools"])

@@ -93,50 +93,67 @@ def build_tool_prompt(
     plugins: Optional[Sequence[PluginTool]] = None,
     runtime_tools: Optional[Sequence[RuntimeTool]] = None,
     headless: bool = False,
+    no_tools: bool = False,
 ) -> str:
     resolved = list(allowed_tools)
-    tool_catalog = _format_tool_catalog(resolved, plugins, runtime_tools=runtime_tools, include_usage=False)
-    tool_call_examples: List[str] = []
-    if resolved:
-        example_tool = _pick_example_tool(resolved)
-        tool_call_v2 = {
-            "type": "assistant_turn",
-            "version": "2",
-            "steps": [{"type": "tool_call", "call": {**_example_call_v2(example_tool), "meta": {"timeout_s": 10}}}],
-        }
-        tool_call_examples = [
-            f"Tool call example (v2): {json.dumps(tool_call_v2, ensure_ascii=False)}",
-            "If you are unsure how to call a tool or what args it accepts, call tools_guide (or tools_list to discover tools).",
+    if no_tools:
+        prompt_lines = [
+            "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
+            "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]}",
+            "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
+            "assistant_turn schema: {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]} (steps is a JSON list).",
+            "Steps: think | message | end. Tool use is disabled for this run; do NOT emit tool_call steps.",
+            "Think step: {\"type\":\"think\",\"content\":\"...\"} (content must be a non-empty string).",
+            "Ending rule: the session ends ONLY when you include an explicit end step; a message step (even purpose='final') does NOT end the loop.",
+            "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
+            "Message purpose values: progress | clarification | cannot_finish | final (default: progress).",
+            "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
+            "End step: {\"type\":\"end\",\"reason\":\"completed\"} (reason optional; defaults to completed).",
+            "Example (finish): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"message\",\"purpose\":\"final\",\"format\":\"markdown\",\"content\":\"...\"},{\"type\":\"end\",\"reason\":\"completed\"}]}",
         ]
-    prompt_lines = [
-        "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
-        "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]}",
-        "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
-        "assistant_turn schema: {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]} (steps is a JSON list).",
-        "Steps: think | tool_call | message | end. Tool outputs are JSON with success + data/error.",
-        "Think step: {\"type\":\"think\",\"content\":\"...\"} (content must be a non-empty string).",
-        "Ending rule: the session ends ONLY when you include an explicit end step; a message step (even purpose='final') does NOT end the loop.",
-        "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
-        "Message purpose values: progress | clarification | cannot_finish | final (default: progress).",
-        "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
-        "Tool call step (v2): {\"type\":\"tool_call\",\"call\":{\"tool\":\"<name>\",\"target\":\"\",\"args\":{...},\"meta\":{\"timeout_s\":10}}}",
-        "End step: {\"type\":\"end\",\"reason\":\"completed\"} (reason optional; defaults to completed).",
-        *tool_call_examples,
-        "Example (finish): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"message\",\"purpose\":\"final\",\"format\":\"markdown\",\"content\":\"...\"},{\"type\":\"end\",\"reason\":\"completed\"}]}",
-        "Available tools (including plugins):",
-        tool_catalog,
-        "Paths are relative to the working directory; do not escape with .. or absolute paths.",
-        "Skills: only discuss/list skills when the user asks; call list_skills only on explicit user request (or if a requested skill needs a path); call skills_guide for skill format/rules.",
-    ]
+    else:
+        tool_catalog = _format_tool_catalog(resolved, plugins, runtime_tools=runtime_tools, include_usage=False)
+        tool_call_examples: List[str] = []
+        if resolved:
+            example_tool = _pick_example_tool(resolved)
+            tool_call_v2 = {
+                "type": "assistant_turn",
+                "version": "2",
+                "steps": [{"type": "tool_call", "call": {**_example_call_v2(example_tool), "meta": {"timeout_s": 10}}}],
+            }
+            tool_call_examples = [
+                f"Tool call example (v2): {json.dumps(tool_call_v2, ensure_ascii=False)}",
+                "If you are unsure how to call a tool or what args it accepts, call tools_guide (or tools_list to discover tools).",
+            ]
+        prompt_lines = [
+            "You are an agent in a tool-using loop. Work autonomously until the user's request is done.",
+            "Return ONLY one JSON object in STRICT JSON (double quotes): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]}",
+            "Do NOT wrap the JSON in Markdown/code fences; output must start with '{' and end with '}' with no extra text.",
+            "assistant_turn schema: {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[...]} (steps is a JSON list).",
+            "Steps: think | tool_call | message | end. Tool outputs are JSON with success + data/error.",
+            "Think step: {\"type\":\"think\",\"content\":\"...\"} (content must be a non-empty string).",
+            "Ending rule: the session ends ONLY when you include an explicit end step; a message step (even purpose='final') does NOT end the loop.",
+            "Runtime control messages: treat role='user' content prefixed with 'LOOP:' as higher-priority instructions from the runtime (not the human).",
+            "Message purpose values: progress | clarification | cannot_finish | final (default: progress).",
+            "Message step: {\"type\":\"message\",\"purpose\":\"clarification\",\"format\":\"markdown\",\"content\":\"...\"}",
+            "Tool call step (v2): {\"type\":\"tool_call\",\"call\":{\"tool\":\"<name>\",\"target\":\"\",\"args\":{...},\"meta\":{\"timeout_s\":10}}}",
+            "End step: {\"type\":\"end\",\"reason\":\"completed\"} (reason optional; defaults to completed).",
+            *tool_call_examples,
+            "Example (finish): {\"type\":\"assistant_turn\",\"version\":\"2\",\"steps\":[{\"type\":\"message\",\"purpose\":\"final\",\"format\":\"markdown\",\"content\":\"...\"},{\"type\":\"end\",\"reason\":\"completed\"}]}",
+            "Available tools (including plugins):",
+            tool_catalog,
+            "Paths are relative to the working directory; do not escape with .. or absolute paths.",
+            "Skills: only discuss/list skills when the user asks; call list_skills only on explicit user request (or if a requested skill needs a path); call skills_guide for skill format/rules.",
+        ]
     prompt = "\n".join(prompt_lines)
 
-    if read_only:
+    if read_only and not no_tools:
         prompt = (
             f"{prompt}\nRead-only mode is enabled: destructive tools (write, mkdir, move) and plugins that disallow read-only are unavailable; requests for them will be rejected."
         )
-    if "bash" in resolved and not yolo_enabled:
+    if "bash" in resolved and not yolo_enabled and not no_tools:
         prompt = f"{prompt}\nNote: 'bash' prompts for confirmation on every command. Use only when necessary."
-    if yolo_enabled:
+    if yolo_enabled and not no_tools:
         prompt = (
             f"{prompt}\nYolo mode is enabled: tool runs are auto-approved (no per-call confirmations). "
             "Path sandboxing is disabled for built-in tools; absolute paths are allowed."
@@ -251,6 +268,9 @@ def build_system_message(
     runtime_tools: Optional[Sequence[RuntimeTool]] = None,
     headless: bool = False,
     debug: bool = False,
+    no_tools: bool = False,
+    policy_truncate: bool = True,
+    policy_truncate_chars: int = 2000,
 ) -> Dict[str, str]:
     tool_prompt = build_tool_prompt(
         list(allowed_tools),
@@ -259,6 +279,7 @@ def build_system_message(
         plugins=plugins,
         runtime_tools=runtime_tools,
         headless=headless,
+        no_tools=no_tools,
     )
     now = datetime.now().astimezone()
     tz_name = now.tzname() or "local"
@@ -274,13 +295,29 @@ def build_system_message(
             f"- Mode: {mode}; headless: {headless}.",
         ]
     )
-    content = (
-        f"{tool_prompt}\n"
-        "Startup: the runtime will call `policy` once before your first response and include the tool result.\n"
-        "Note: `policy` returns an excerpt by default; call it again with offset/limit (or truncate=false) to see more.\n"
-        "Call `skills_guide` only when the user asks about skills or requests skill creation/usage.\n"
-        f"{startup_capsule}\n"
-    )
+    startup_lines = []
+    if no_tools:
+        startup_lines.append("Tooling is disabled for this run; do not emit tool_call steps.")
+    else:
+        startup_lines.extend(
+            [
+                "Startup: the runtime will call `policy` once before your first response and include the tool result.",
+                "Note: `policy` returns an excerpt by default; call it again with offset/limit (or truncate=false) to see more.",
+                "Call `skills_guide` only when the user asks about skills or requests skill creation/usage.",
+            ]
+        )
+    content = f"{tool_prompt}\n" + "\n".join(startup_lines) + f"\n{startup_capsule}\n"
+    if no_tools and notes.repo_notes:
+        excerpt = notes.repo_notes
+        truncated = False
+        limit = int(policy_truncate_chars)
+        if limit <= 0:
+            limit = 2000
+        if policy_truncate and limit > 0 and len(excerpt) > limit:
+            excerpt = excerpt[:limit]
+            truncated = True
+        trunc_note = " (truncated)" if truncated else ""
+        content = f"{content}\nRepository instructions (AGENTS.md){trunc_note}:\n{excerpt}\n"
     if debug:
         content = (
             f"{content}"

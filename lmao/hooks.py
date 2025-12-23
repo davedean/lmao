@@ -98,12 +98,14 @@ class HookRegistry:
         if hook_type not in self._hooks:
             self._hooks[hook_type] = []
         self._order_counter += 1
+        raw_name = name if name is not None else getattr(hook_func, "__name__", "hook")
+        name_str = str(raw_name) if raw_name is not None else "hook"
         subscription = HookSubscription(
             hook_type=hook_type,
             hook_func=hook_func,
             priority=int(priority),
             order=self._order_counter,
-            name=name or getattr(hook_func, "__name__", "hook"),
+            name=name_str,
             metadata=dict(metadata),
         )
         self._hooks[hook_type].append(subscription)

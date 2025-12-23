@@ -78,9 +78,11 @@ class HeadlessEndAutoSummaryTests(TestCase):
                 plugin_tools=plugins,
                 runtime_tools={},
                 runtime_context=runtime_ctx,
-            show_stats=False,
-            debug_logger=None,
-        )
+                show_stats=False,
+                quiet=False,
+                no_tools=False,
+                debug_logger=None,
+            )
 
         self.assertTrue(ended)
         self.assertEqual(2, client.calls)

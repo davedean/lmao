@@ -72,6 +72,8 @@ class HeadlessClarificationTests(TestCase):
                 runtime_tools={},
                 runtime_context=runtime_ctx,
                 show_stats=False,
+                quiet=False,
+                no_tools=False,
                 debug_logger=None,
             )
 

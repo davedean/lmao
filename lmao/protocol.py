@@ -294,7 +294,11 @@ def parse_assistant_turn_with_hooks(
         raw_message=raw_text,
     )
     pre_result = registry.execute_hooks(ProtocolHookTypes.PRE_ASSISTANT_TURN_PARSING, context)
-    if pre_result.modified_context and pre_result.modified_context.raw_message is not None:
+    if (
+        pre_result.modified_context
+        and isinstance(pre_result.modified_context, ProtocolHookContext)
+        and pre_result.modified_context.raw_message is not None
+    ):
         raw_text = pre_result.modified_context.raw_message
     try:
         turn = parse_assistant_turn(

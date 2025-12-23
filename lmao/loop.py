@@ -19,6 +19,7 @@ from .hooks import (
 from .protocol import (
     AssistantTurn,
     ProtocolError,
+    MessageStep,
     collect_steps,
     collect_tool_calls,
     parse_assistant_turn_with_hooks,
@@ -158,6 +159,8 @@ def run_agent_turn(
     allowed_tools: Sequence[str],
     plugin_tools: Dict[str, PluginTool],
     show_stats: bool,
+    quiet: bool,
+    no_tools: bool,
     max_turns: Optional[int] = None,
     debug_logger: Optional[DebugLogger] = None,
     runtime_tools: Optional[Dict[str, RuntimeTool]] = None,
@@ -189,6 +192,20 @@ def run_agent_turn(
 
     def indent(text: str) -> str:
         return "\n".join(f"    {line}" for line in text.splitlines())
+
+    def emit(text: str, end: str = "\n") -> None:
+        if quiet:
+            return
+        print(text, end=end)
+
+    def _select_final_output(messages: Sequence[MessageStep]) -> str:
+        finals = [msg.content for msg in messages if msg.purpose == "final"]
+        if finals:
+            return "\n\n".join(finals)
+        cannot_finish = [msg.content for msg in messages if msg.purpose == MESSAGE_PURPOSE_CANNOT_FINISH]
+        if cannot_finish:
+            return "\n\n".join(cannot_finish)
+        return ""
 
     def log_tool_failure(tool_call: ToolCall, output: str) -> None:
         if not error_logger:
@@ -228,7 +245,8 @@ def run_agent_turn(
 
     while True:
         if max_turns is not None and current_turn > max_turns:
-            print(f"{COLOR_DIM}Reached max turns ({max_turns}); stopping.{COLOR_RESET}")
+            if not quiet:
+                emit(f"{COLOR_DIM}Reached max turns ({max_turns}); stopping.{COLOR_RESET}")
             if debug_logger:
                 debug_logger.log("loop.stop", f"reason=max_turns reached={max_turns}")
             return current_turn, last_stats, True
@@ -319,7 +337,7 @@ def run_agent_turn(
         assistant_reply = result.content
         last_stats = result.stats
 
-        if show_stats:
+        if show_stats and not quiet:
             estimate_mark = "~" if last_stats.is_estimate else ""
             stats_line = (
                 f"[stats] in={estimate_mark}{last_stats.prompt_tokens} "
@@ -329,7 +347,7 @@ def run_agent_turn(
                 f"bytes={last_stats.request_bytes}/{last_stats.response_bytes} "
                 f"msgs={len(messages)}"
             )
-            print(f"{COLOR_DIM}{stats_line}{COLOR_RESET}")
+            emit(f"{COLOR_DIM}{stats_line}{COLOR_RESET}")
 
         if not assistant_reply or not assistant_reply.strip():
             empty_replies += 1
@@ -339,7 +357,8 @@ def run_agent_turn(
                     f"(auto-generated fallback) Unable to get a response from the model. "
                     f"Based on the latest tool output, here is a summary:\n{fallback}"
                 )
-                print(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{assistant_reply}\n")
+                if not quiet:
+                    emit(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{assistant_reply}\n", end="")
                 messages.append({"role": "assistant", "content": assistant_reply})
                 return current_turn + 1, last_stats, False
             _upsert_action_required(
@@ -360,6 +379,8 @@ def run_agent_turn(
             debug_logger.log("assistant.reply", f"turn={current_turn} content={assistant_reply}")
 
         try:
+            if no_tools and _reply_mentions_tool_call(assistant_reply):
+                raise ProtocolError("tool calls are disabled (no-tools mode)")
             turn_obj = parse_assistant_turn_with_hooks(
                 assistant_reply,
                 allowed_tools=allowed_tools,
@@ -375,8 +396,8 @@ def run_agent_turn(
                 )
         except ProtocolError as exc:
             invalid_replies += 1
-            if debug_logger:
-                print(f"{COLOR_DIM}[protocol] invalid: {exc} (retry {invalid_replies}/2){COLOR_RESET}")
+            if debug_logger and not quiet:
+                emit(f"{COLOR_DIM}[protocol] invalid: {exc} (retry {invalid_replies}/2){COLOR_RESET}")
             if invalid_replies > 2:
                 message = (
                     "error: model repeatedly returned invalid JSON protocol output.\n"
@@ -384,7 +405,8 @@ def run_agent_turn(
                     "last reply (verbatim):\n"
                     f"{assistant_reply}"
                 )
-                print(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{message}\n")
+                if not quiet:
+                    emit(f"\n{COLOR_BLUE}[assistant #{current_turn}]{COLOR_RESET}\n{message}\n", end="")
                 messages.append({"role": "assistant", "content": assistant_reply})
                 return current_turn + 1, last_stats, False
 
@@ -434,33 +456,36 @@ def run_agent_turn(
             explicit_clarification_requested or _headless_requests_user_input(input_check_messages)
         )
 
-        if debug_logger:
+        if debug_logger and not quiet:
             step_summary = ",".join(step.type for step in turn_obj.steps) if turn_obj.steps else "(no steps)"
-            print(f"{COLOR_DIM}[protocol] ok steps={step_summary}{COLOR_RESET}")
+            emit(f"{COLOR_DIM}[protocol] ok steps={step_summary}{COLOR_RESET}")
 
-        print(f"\n{label_color}[assistant #{current_turn}]{COLOR_RESET}")
-        if headless_input_requested:
-            print(
-                f"{COLOR_DIM}(requests for user input are disallowed in headless mode; proceed autonomously or emit purpose='cannot_finish' and end){COLOR_RESET}"
-            )
-            if user_messages:
+        if not quiet:
+            emit(f"\n{label_color}[assistant #{current_turn}]{COLOR_RESET}")
+            if headless_input_requested:
+                emit(
+                    f"{COLOR_DIM}(requests for user input are disallowed in headless mode; proceed autonomously or emit purpose='cannot_finish' and end){COLOR_RESET}"
+                )
+                if user_messages:
+                    combined = "\n\n".join(step.content for step in user_messages)
+                    preview = _truncate_preview(combined, max_lines=4, max_chars=320)
+                    if preview:
+                        purposes = ", ".join((step.purpose or "progress") for step in user_messages)
+                        emit(f"{COLOR_DIM}(message preview; purpose={purposes})\n{preview}{COLOR_RESET}")
+            if thinks:
+                think_preview = _truncate_preview(
+                    "\n\n".join(step.content for step in thinks), max_lines=3, max_chars=240
+                )
+                if think_preview:
+                    emit(f"{COLOR_DIM}(think preview)\n{think_preview}{COLOR_RESET}")
+            if tool_call_payloads:
+                tools = ", ".join(call.tool for call in tool_call_payloads)
+                emit(f"{COLOR_DIM}(requesting tool(s): {tools}){COLOR_RESET}\n")
+            elif user_messages and not headless_input_requested:
                 combined = "\n\n".join(step.content for step in user_messages)
-                preview = _truncate_preview(combined, max_lines=4, max_chars=320)
-                if preview:
-                    purposes = ", ".join((step.purpose or "progress") for step in user_messages)
-                    print(f"{COLOR_DIM}(message preview; purpose={purposes})\n{preview}{COLOR_RESET}")
-        if thinks:
-            think_preview = _truncate_preview("\n\n".join(step.content for step in thinks), max_lines=3, max_chars=240)
-            if think_preview:
-                print(f"{COLOR_DIM}(think preview)\n{think_preview}{COLOR_RESET}")
-        if tool_call_payloads:
-            tools = ", ".join(call.tool for call in tool_call_payloads)
-            print(f"{COLOR_DIM}(requesting tool(s): {tools}){COLOR_RESET}\n")
-        elif user_messages and not headless_input_requested:
-            combined = "\n\n".join(step.content for step in user_messages)
-            print(f"{combined}\n")
-        else:
-            print()
+                emit(f"{combined}\n", end="")
+            else:
+                emit("", end="")
 
         # Preserve protocol conversation history for the model by storing the JSON turn without think steps.
         if tool_call_payloads:
@@ -478,8 +503,9 @@ def run_agent_turn(
                 messages,
                 (
                     "Headless mode is active: the human user cannot respond, so do NOT ask questions or request confirmation.\n"
-                    "Proceed autonomously: pick reasonable defaults, state assumptions briefly, and continue (call tools if helpful).\n"
-                    "If you are truly blocked, send a message step with purpose='cannot_finish' describing what's missing, then end."
+                    "Proceed autonomously: pick reasonable defaults, state assumptions briefly, and continue.\n"
+                    + ("Tooling is disabled for this run.\n" if no_tools else "Call tools if helpful.\n")
+                    + "If you are truly blocked, send a message step with purpose='cannot_finish' describing what's missing, then end."
                 ),
             )
             current_turn += 1
@@ -504,10 +530,17 @@ def run_agent_turn(
                     "Return ONLY JSON; do not ask the user to type 'ok' or provide follow-ups."
                 )
             else:
+                next_action = (
+                    "Continue immediately without waiting for user input: either call a tool (tool_call steps) "
+                    "or, if finished, send purpose='final' AND an explicit end step.\n"
+                    if not no_tools
+                    else "Continue immediately without waiting for user input: send a message step or, if finished, "
+                    "send purpose='final' AND an explicit end step.\n"
+                )
                 instruction = (
                     f"{reminder}"
                     "You sent a progress message but did not call any tools and did not end.\n"
-                    "Continue immediately without waiting for user input: either call a tool (tool_call steps) or, if finished, send purpose='final' AND an explicit end step.\n"
+                    f"{next_action}"
                     "Do not ask the user to type 'ok' or otherwise prompt for input unless you truly need clarification (then set purpose='clarification')."
                 )
             _upsert_action_required(messages, instruction)
@@ -516,17 +549,24 @@ def run_agent_turn(
 
         if thinks and not user_messages and not tool_call_payloads and not has_end:
             think_only_turns += 1
-            next_json = (
-                '{"type":"assistant_turn","version":"2","steps":['
-                '{"type":"tool_call","call":{"tool":"read","target":"README.md","args":"lines:1-40"}}'
-                "]}"
-            )
+            if no_tools:
+                next_json = (
+                    '{"type":"assistant_turn","version":"2","steps":['
+                    '{"type":"message","purpose":"progress","content":"Working on it."}'
+                    "]}"
+                )
+            else:
+                next_json = (
+                    '{"type":"assistant_turn","version":"2","steps":['
+                    '{"type":"tool_call","call":{"tool":"read","target":"README.md","args":"lines:1-40"}}'
+                    "]}"
+                )
             if think_only_turns > 3:
                 _upsert_action_required(
                     messages,
                     (
                         "You have emitted multiple think-only turns. This is not allowed.\n"
-                        "Next, emit either tool_call steps or message/end steps.\n\n"
+                        f"Next, emit {'message/end steps' if no_tools else 'either tool_call steps or message/end steps'}.\n\n"
                         "Return ONLY a single JSON object matching the assistant protocol.\n"
                         f"Example next action:\n{next_json}"
                     ),
@@ -576,13 +616,13 @@ def run_agent_turn(
                 log_tool_failure(tool_call, output)
                 tool_desc = f"tool '{tool_call.tool}' on '{tool_call.target}'"
                 last_tool_summary = summarize_output(output, max_lines=max_tool_output[0], max_chars=max_tool_output[1])
-                if max_tool_output[1] > 0:
+                if max_tool_output[1] > 0 and not quiet:
                     args_repr = ""
                     if tool_call.args not in ("", None, {}):
                         args_repr = f" args: {tool_call.args!r}"
                     tool_header = f"tool: {tool_call.tool}, {tool_call.target!r}{args_repr}"
                     tool_result_body = indent(f"[tool result] {tool_header}\n{last_tool_summary}")
-                    print(f"{COLOR_DIM}{tool_result_body}{COLOR_RESET}\n")
+                    emit(f"{COLOR_DIM}{tool_result_body}{COLOR_RESET}\n", end="")
 
                 if debug_logger:
                     debug_logger.log(
@@ -615,6 +655,10 @@ def run_agent_turn(
             continue
 
         if has_end:
+            if quiet:
+                final_text = _select_final_output(user_messages)
+                if final_text:
+                    print(final_text)
             return current_turn + 1, last_stats, True
 
         return current_turn + 1, last_stats, False
@@ -629,6 +673,8 @@ def run_loop(
     yolo_enabled: bool,
     read_only: bool,
     show_stats: bool,
+    quiet: bool = False,
+    no_tools: bool = False,
     headless: bool = False,
     multiline: bool = False,
     plugin_dirs: Optional[Sequence[Path]] = None,
@@ -673,30 +719,43 @@ def run_loop(
         extra_roots.append(resolved_user_skills)
         skill_roots.append(resolved_user_skills)
 
-    plugins = discover_plugins(plugin_dirs or [], base, debug_logger=debug_logger, allow_outside_base=True)
-    discover_plugin_hooks(
-        plugin_dirs or [],
-        base,
-        hook_registry,
-        debug_logger=debug_logger,
-        allow_outside_base=True,
-    )
-    if debug_logger and plugins:
-        debug_logger.log("plugins.loaded", f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}")
-    runtime_tools = build_runtime_tool_registry()
-    allowed_tools = get_allowed_tools(
-        read_only=read_only,
-        yolo_enabled=yolo_enabled,
-        plugins=list(plugins.values()),
-    )
-    allowed_tools = list(allowed_tools) + sorted(runtime_tools.keys())
-    known_tools = sorted(set(list(plugins.keys()) + list(runtime_tools.keys())))
+    plugins: Dict[str, PluginTool] = {}
+    runtime_tools: Dict[str, RuntimeTool] = {}
+    if not no_tools:
+        plugins = discover_plugins(plugin_dirs or [], base, debug_logger=debug_logger, allow_outside_base=True)
+        discover_plugin_hooks(
+            plugin_dirs or [],
+            base,
+            hook_registry,
+            debug_logger=debug_logger,
+            allow_outside_base=True,
+        )
+        if debug_logger and plugins:
+            debug_logger.log(
+                "plugins.loaded",
+                f"{[(name, str(plugin.path)) for name, plugin in plugins.items()]}",
+            )
+        runtime_tools = build_runtime_tool_registry()
+        allowed_tools = get_allowed_tools(
+            read_only=read_only,
+            yolo_enabled=yolo_enabled,
+            plugins=list(plugins.values()),
+        )
+        allowed_tools = list(allowed_tools) + sorted(runtime_tools.keys())
+        known_tools = sorted(set(list(plugins.keys()) + list(runtime_tools.keys())))
+    else:
+        allowed_tools = []
+        known_tools = []
     mode_label = "read-only" if read_only else ("yolo" if yolo_enabled else "normal")
     if headless:
         mode_label += " (headless)"
+    if no_tools:
+        mode_label += " (no-tools)"
     last_prompt_stats: Optional[LLMCallStats] = None
 
     def format_user_prompt() -> str:
+        if quiet:
+            return ""
         if not show_stats or not last_prompt_stats:
             return f"{COLOR_GREEN}You [mode: {mode_label}]:{COLOR_RESET} "
         estimate_mark = "~" if last_prompt_stats.is_estimate else ""
@@ -755,6 +814,9 @@ def run_loop(
             runtime_tools=list(runtime_tools.values()),
             headless=headless,
             debug=debug_logger is not None,
+            no_tools=no_tools,
+            policy_truncate=policy_truncate,
+            policy_truncate_chars=policy_truncate_chars,
         )
     ]
     user_input = initial_prompt
@@ -800,6 +862,8 @@ def run_loop(
         return any(trigger in lowered for trigger in triggers)
 
     def _append_startup_tool_result(tool_name: str, *, last_user: str) -> None:
+        if no_tools:
+            return
         if tool_name not in plugins:
             if debug_logger:
                 debug_logger.log("startup.prelude.skip", f"missing_tool={tool_name}")
@@ -874,7 +938,8 @@ def run_loop(
 
     while True:
         if max_turns is not None and turn > max_turns:
-            print(f"Reached max turns ({max_turns}); stopping.")
+            if not quiet:
+                print(f"Reached max turns ({max_turns}); stopping.")
             if debug_logger:
                 debug_logger.log("loop.stop", f"reason=max_turns reached={max_turns}")
             _emit_shutdown()
@@ -919,7 +984,7 @@ def run_loop(
             base=base,
             extra_roots=extra_roots,
             skill_roots=skill_roots,
-            max_tool_output=max_tool_output if not silent_tools else (0, 0),
+            max_tool_output=max_tool_output if not (silent_tools or quiet) else (0, 0),
             yolo_enabled=yolo_enabled,
             read_only=read_only,
             allowed_tools=allowed_tools,
@@ -927,6 +992,8 @@ def run_loop(
             runtime_tools=runtime_tools,
             runtime_context=runtime_ctx,
             show_stats=show_stats,
+            quiet=quiet,
+            no_tools=no_tools,
             max_turns=max_turns,
             debug_logger=debug_logger,
             error_logger=error_logger,
@@ -936,17 +1003,23 @@ def run_loop(
             if headless:
                 _emit_shutdown()
                 return
-            print(
-                f"{COLOR_DIM}(model requested end; enter a new prompt to continue, or press Ctrl-D to exit){COLOR_RESET}"
-            )
+            if not quiet:
+                print(
+                    f"{COLOR_DIM}(model requested end; enter a new prompt to continue, or press Ctrl-D to exit){COLOR_RESET}"
+                )
         if headless:
             # Headless mode has no interactive user to provide follow-ups. If the model did not end,
             # prompt it to continue autonomously (tools or final+end) toward the original request.
             request = root_request or ""
+            tool_hint = (
+                "If you can proceed, take the next action now (call tools as needed).\n"
+                if not no_tools
+                else "If you can proceed, take the next action now without tools.\n"
+            )
             user_input = (
                 f"{LOOP_PREFIX} Headless mode: continue autonomously without waiting for user input.\n"
                 f"Original request: {request!r}\n"
-                "If you can proceed, take the next action now (call tools as needed).\n"
+                f"{tool_hint}"
                 "If you are finished, send a final summary message AND include an explicit end step.\n"
                 "Important: a message step with purpose='final' does NOT stop the run; only an end step stops it.\n"
                 "Do not ask questions or request confirmation; proceed autonomously using reasonable defaults.\n"

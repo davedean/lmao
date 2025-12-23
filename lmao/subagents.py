@@ -171,7 +171,7 @@ def run_subagent_one_shot(
                 read_only=read_only,
                 plugin_tools=plugin_tools,
                 runtime_tools=None,
-                runtime_context=runtime_ctx,
+                runtime_context=None,
                 debug_logger=debug_logger,
             )
             messages.append({"role": "user", "content": f"LOOP: Tool result: {tool_result}"})

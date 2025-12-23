@@ -25,6 +25,8 @@ mode = yolo
 multiline = true
 silent_tools = false
 no_stats = true
+quiet = true
+no_tools = true
 max_turns = 5
 workdir = ~/code
 
@@ -70,6 +72,8 @@ log_path = /tmp/lmao-debug.log
         self.assertTrue(cfg.multiline)
         self.assertFalse(cfg.silent_tools)
         self.assertTrue(cfg.no_stats)
+        self.assertTrue(cfg.quiet)
+        self.assertTrue(cfg.no_tools)
         self.assertEqual(5, cfg.max_turns)
         self.assertEqual("~/code", cfg.workdir)
         self.assertAlmostEqual(0.7, cfg.temperature)

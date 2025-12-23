@@ -44,6 +44,8 @@ mode = normal
 multiline = false
 silent_tools = false
 no_stats = false
+quiet = false
+no_tools = false
 max_turns =
 workdir =
 
@@ -83,6 +85,7 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Assistant protocol: the model must respond with a single JSON object each turn (`{"type":"assistant_turn","version":"1","steps":[...]}`), with step types `think`, `tool_call`, `message`, and `end`. The loop retries if the JSON is invalid.
 - Optional tool: `bash` ships as a plugin and prompts for confirmation on every command; it is available unless read-only mode is set.
 - Read-only mode: pass `--mode readonly` (or legacy `--read-only`) to disable destructive tools (`write`, `mkdir`, `move`) and any plugin that opts out of read-only (git/bash by default) for inspection-only runs.
+- No-tools mode: pass `--no-tools` (or `no_tools = true` in `lmao.conf`) to disable tool exposure and execution entirely.
 - Pluggable tools: shipped plugins under `lmao/tools` are loaded automatically (see `lmao/tools/demo-plugin/tool.py` for a minimal echo example). Additional plugin directories are not yet supported via CLI.
 - Path safety: all tool paths are constrained to the working directory. User skill folders under `~/.config/agents/skills` are also allowed when present.
 - Headless mode: `--headless` (or `headless = true` in `lmao.conf`) runs without interactive prompts. Provide a prompt via the positional argument, `--prompt-file`, or `default_prompt` in the config; the loop enforces that the agent skips clarification requests and emits a final summary before ending.
@@ -104,7 +107,8 @@ Model discovery metadata (cache + health tracking) is kept in `~/.config/agents/
 - Safety: `--mode yolo` (opt into risky flows/plugins) or `--mode readonly` (disable writes/moves/git/bash and plugins that opt out of read-only). `--yolo` remains as a deprecated alias.
 - Extensibility: user-specified plugin directories are planned but not yet supported; current runs load the shipped plugins from `lmao/tools/` (inside the installed package).
 - Loop control: `--max-turns`, `--silent-tools`, `--max-tool-lines`, `--max-tool-chars`
-- Output: `--no-stats` (hide token/latency/bytes stats in the prompt/output)
+- Output: `--no-stats` (hide token/latency/bytes stats in the prompt/output), `--quiet` (only print the final answer)
+- Tooling: `--no-tools` (disable tool exposure and execution)
 - Prompting: `--prompt-file` (seed long prompts), optional interactive prompt when the positional prompt is omitted
 - Headless runtime: `--headless` keeps the loop from prompting; pair it with an explicit prompt (or `default_prompt` in `lmao.conf`) so the agent can finish without clarification requests.
 - Debugging: `--debug` writes verbose loop/tool/model traces to `debug.log` in the working directory (override the destination with `[debug]` `log_path`, relative paths are resolved under the working directory)

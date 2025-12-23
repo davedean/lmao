@@ -53,6 +53,8 @@ class ThinkOnlyContinuationTests(TestCase):
                 allowed_tools=[],
                 plugin_tools={},
                 show_stats=False,
+                quiet=False,
+                no_tools=False,
                 debug_logger=None,
             )
 

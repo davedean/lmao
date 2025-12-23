@@ -383,14 +383,16 @@ def _register_module_hooks(
     hook_registry: HookRegistry,
     debug_logger: Optional[DebugLogger] = None,
 ) -> None:
-    hook_specs = []
+    hook_specs: List[tuple[str, dict[str, Any]]] = []
     module_hooks = getattr(module, "HOOKS", None)
     if isinstance(module_hooks, dict):
         hook_specs.append(("module", module_hooks))
 
     manifest = getattr(module, "PLUGIN", None)
     if isinstance(manifest, dict) and manifest.get("hooks"):
-        hook_specs.append((manifest.get("name", "plugin"), manifest.get("hooks")))
+        hooks = manifest.get("hooks")
+        if isinstance(hooks, dict):
+            hook_specs.append((str(manifest.get("name", "plugin")), hooks))
 
     multi_manifests = getattr(module, "PLUGINS", None)
     if isinstance(multi_manifests, list):
@@ -398,8 +400,8 @@ def _register_module_hooks(
             if not isinstance(item, dict):
                 continue
             hooks = item.get("hooks")
-            if hooks:
-                hook_specs.append((item.get("name", f"plugin_{idx}"), hooks))
+            if isinstance(hooks, dict):
+                hook_specs.append((str(item.get("name", f"plugin_{idx}")), hooks))
 
     for plugin_name, hooks in hook_specs:
         _register_hook_mapping(

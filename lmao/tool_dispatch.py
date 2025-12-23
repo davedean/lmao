@@ -9,6 +9,7 @@ from .debug_log import DebugLogger
 from .hooks import (
     ErrorHookContext,
     ErrorHookTypes,
+    HookResult,
     LoggingHookContext,
     LoggingHookTypes,
     ToolHookContext,
@@ -106,6 +107,14 @@ def confirm_plugin_run(plugin: PluginTool, target: str, args: Any) -> bool:
     return approval.startswith("y")
 
 
+def _maybe_update_tool_context(
+    tool_context: ToolHookContext, result: HookResult
+) -> ToolHookContext:
+    if result.modified_context and isinstance(result.modified_context, ToolHookContext):
+        return result.modified_context
+    return tool_context
+
+
 def run_tool(
     tool_call: ToolCall,
     base: Path,
@@ -152,8 +161,7 @@ def run_tool(
     pre_validation = hook_registry.execute_hooks(
         ToolHookTypes.PRE_TOOL_VALIDATION, tool_context
     )
-    if pre_validation.modified_context:
-        tool_context = pre_validation.modified_context
+    tool_context = _maybe_update_tool_context(tool_context, pre_validation)
     tool_call, tool, target, args = _apply_tool_context_updates(tool_call, tool_context)
     if pre_validation.should_cancel:
         return json_error(tool, "tool execution cancelled by hook")
@@ -170,8 +178,7 @@ def run_tool(
         perm_result = hook_registry.execute_hooks(
             ToolHookTypes.PRE_PERMISSION_CHECK, permission_context
         )
-        if perm_result.modified_context:
-            tool_context = perm_result.modified_context
+        tool_context = _maybe_update_tool_context(tool_context, perm_result)
         tool_call, tool, target, args = _apply_tool_context_updates(
             tool_call, tool_context
         )
@@ -224,8 +231,7 @@ def run_tool(
             pre_exec = hook_registry.execute_hooks(
                 ToolHookTypes.PRE_TOOL_EXECUTION, exec_context
             )
-            if pre_exec.modified_context:
-                tool_context = pre_exec.modified_context
+            tool_context = _maybe_update_tool_context(tool_context, pre_exec)
             tool_call, tool, target, args = _apply_tool_context_updates(
                 tool_call, tool_context
             )
@@ -269,8 +275,7 @@ def run_tool(
     path_result = hook_registry.execute_hooks(
         ToolHookTypes.PRE_PATH_SAFETY_CHECK, path_context
     )
-    if path_result.modified_context:
-        tool_context = path_result.modified_context
+    tool_context = _maybe_update_tool_context(tool_context, path_result)
     tool_call, tool, target, args = _apply_tool_context_updates(tool_call, tool_context)
     if path_result.should_cancel:
         return json_error(tool, "tool execution cancelled by hook")
@@ -351,8 +356,7 @@ def run_tool(
         pre_exec = hook_registry.execute_hooks(
             ToolHookTypes.PRE_TOOL_EXECUTION, exec_context
         )
-        if pre_exec.modified_context:
-            tool_context = pre_exec.modified_context
+        tool_context = _maybe_update_tool_context(tool_context, pre_exec)
         tool_call, tool, target, args = _apply_tool_context_updates(
             tool_call, tool_context
         )
@@ -409,8 +413,7 @@ def run_tool(
             ToolHookTypes.POST_TOOL_EXECUTION,
             tool_context.with_hook_type(ToolHookTypes.POST_TOOL_EXECUTION),
         )
-        if post_exec.modified_context:
-            tool_context = post_exec.modified_context
+        tool_context = _maybe_update_tool_context(tool_context, post_exec)
         if post_exec.should_cancel:
             return json_error(tool, "tool execution cancelled by hook")
         if post_exec.should_skip:
@@ -421,6 +424,7 @@ def run_tool(
         )
         if (
             transform.modified_context
+            and isinstance(transform.modified_context, ToolHookContext)
             and transform.modified_context.tool_result is not None
         ):
             result = transform.modified_context.tool_result

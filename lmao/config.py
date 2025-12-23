@@ -20,6 +20,8 @@ class UserConfig:
     multiline: Optional[bool] = None
     silent_tools: Optional[bool] = None
     no_stats: Optional[bool] = None
+    quiet: Optional[bool] = None
+    no_tools: Optional[bool] = None
     max_turns: Optional[int] = None
     max_tool_lines: Optional[int] = None
     max_tool_chars: Optional[int] = None
@@ -67,6 +69,8 @@ headless = false
 multiline = false
 silent_tools = false
 no_stats = false
+quiet = false
+no_tools = false
 max_turns =
 workdir =
 
@@ -258,6 +262,8 @@ def load_user_config(path: Path) -> ConfigLoadResult:
             multiline=_read_bool(parser, "core", "multiline"),
             silent_tools=_read_bool(parser, "core", "silent_tools"),
             no_stats=_read_bool(parser, "core", "no_stats"),
+            quiet=_read_bool(parser, "core", "quiet"),
+            no_tools=_read_bool(parser, "core", "no_tools"),
             max_turns=_read_int(parser, "core", "max_turns"),
             workdir=_read_string(parser, "core", "workdir"),
             temperature=_read_float(parser, "generation", "temperature"),

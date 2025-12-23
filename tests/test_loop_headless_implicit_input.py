@@ -30,7 +30,7 @@ class _FakeClient:
 
 
 class HeadlessImplicitInputRequestTests(TestCase):
-    def test_headless_blocks_final_question_even_with_end(self) -> None:
+    def test_headless_honors_end_even_with_question(self) -> None:
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         base = Path(tmp.name).resolve()
@@ -40,12 +40,6 @@ class HeadlessImplicitInputRequestTests(TestCase):
                 (
                     '{"type":"assistant_turn","version":"2","steps":['
                     '{"type":"message","purpose":"final","format":"markdown","content":"I can proceed. Would you like me to use option A or B?"},'
-                    '{"type":"end","reason":"completed"}'
-                    "]}"
-                ),
-                (
-                    '{"type":"assistant_turn","version":"2","steps":['
-                    '{"type":"message","purpose":"final","format":"markdown","content":"Chose option A by default. Done."},'
                     '{"type":"end","reason":"completed"}'
                     "]}"
                 ),
@@ -87,7 +81,7 @@ class HeadlessImplicitInputRequestTests(TestCase):
             )
 
         self.assertTrue(ended)
-        self.assertEqual(2, client.calls)
+        self.assertEqual(1, client.calls)
 
     def test_headless_ignores_quoted_questions_in_tables(self) -> None:
         tmp = tempfile.TemporaryDirectory()

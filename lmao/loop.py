@@ -517,7 +517,7 @@ def run_agent_turn(
             )
         if turn_obj.steps:
             messages.append({"role": "assistant", "content": sanitized_reply})
-        if headless_input_requested:
+        if headless_input_requested and not has_end:
             _upsert_action_required(
                 messages,
                 (
